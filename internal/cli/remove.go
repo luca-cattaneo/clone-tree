@@ -4,10 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/luca-cattaneo/clone-tree/internal/config"
 	"github.com/luca-cattaneo/clone-tree/internal/gitwt"
+	"github.com/luca-cattaneo/clone-tree/internal/hooks"
+	"github.com/luca-cattaneo/clone-tree/internal/hosts"
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 	"github.com/spf13/cobra"
 )
@@ -51,12 +54,32 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
+		// pre_remove runs first, before anything is torn down — the repo's
+		// escape hatch for cleanup that must see the instance still intact
+		// (e.g. reading its DB before the compose stack goes away).
+		if slot, ok := reg.Slot(name); ok {
+			vars := cfg.InstanceVars(name, slot)
+			if err := hooks.Run(hookAbsPath(root, cfg.Hooks.PreRemove), wt.Path, hooks.Env(name, slot, vars["dns"], wt.Path, cfg.PortValues(slot))); err != nil {
+				return err
+			}
+		}
+
+		project := composeProjectName(filepath.Base(root), name)
+		if err := composeDown(wt.Path, project); err != nil {
+			return err
+		}
+
 		if err := gitwt.Remove(root, wt.Path, removeForce); err != nil {
 			return err
 		}
 
 		if slot, ok := reg.Slot(name); ok {
 			removeCloneCoWDsts(cfg, name, slot)
+			if cfg.DNSPattern != "" {
+				if err := hosts.Remove(hostsPath, name); err != nil {
+					return err
+				}
+			}
 		}
 
 		return reg.Free(name)
@@ -93,7 +116,7 @@ func resolveNameOrSlot(reg *slots.Registry, arg string) (string, error) {
 		return arg, nil
 	}
 	if slot == 0 {
-		return "", fmt.Errorf("slot 0 is the main repository and cannot be removed")
+		return "", fmt.Errorf("slot 0 is the main repository")
 	}
 	name, ok := reg.Name(slot)
 	if !ok {

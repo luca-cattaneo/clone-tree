@@ -6,7 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/luca-cattaneo/clone-tree/internal/hosts"
+	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
 
 // newCreateFixtureRepo creates a git repository named "repo" inside a fresh
@@ -269,5 +273,121 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	}
 	if want := "../sibling"; link != want {
 		t.Fatalf("symlink_siblings: got %q, want %q", link, want)
+	}
+}
+
+// writeHookScript writes an executable shell script fixture at dir/name and
+// returns its path.
+func writeHookScript(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return path
+}
+
+func TestCreate_GIVEN_postCreateHook_WHEN_created_THEN_hookRunsWithInstanceEnv(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+
+	markerFile := filepath.Join(projectsDir, "marker.txt")
+	writeHookScript(t, repoDir, filepath.Join(".clone-tree", "hooks", "post-create.sh"),
+		fmt.Sprintf(`env | sort > %q`, markerFile)+"\n")
+
+	configYAML := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"\"\n" +
+		"max_slots: 9\n" +
+		"ports: {}\n" +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks:\n" +
+		"  post_create: .clone-tree/hooks/post-create.sh\n"
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	if err := createCmd.RunE(createCmd, []string{"feature"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := os.ReadFile(markerFile)
+	if err != nil {
+		t.Fatalf("ReadFile marker: %v", err)
+	}
+	out := string(got)
+	for _, want := range []string{"CT_NAME=feature", "CT_SLOT=1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("hook env %q does not contain %q", out, want)
+		}
+	}
+}
+
+func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResidue(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+
+	writeHookScript(t, repoDir, filepath.Join(".clone-tree", "hooks", "post-create.sh"), "exit 1\n")
+
+	hostsFile := filepath.Join(t.TempDir(), "hosts")
+	if err := os.WriteFile(hostsFile, nil, 0o644); err != nil {
+		t.Fatalf("write hostsFile: %v", err)
+	}
+	origHostsPath := hostsPath
+	hostsPath = hostsFile
+	t.Cleanup(func() { hostsPath = origHostsPath })
+
+	configYAML := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"local-{name}.dev.test\"\n" +
+		"max_slots: 9\n" +
+		"ports: {}\n" +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks:\n" +
+		"  post_create: .clone-tree/hooks/post-create.sh\n"
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	err := createCmd.RunE(createCmd, []string{"feature"})
+	if err == nil {
+		t.Fatalf("expected create to fail: post_create hook exits non-zero")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(projectsDir, "repo-worktrees", "feature")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected the worktree to be rolled back, stat err: %v", statErr)
+	}
+
+	reg, loadErr := slots.Load(filepath.Join(projectsDir, "repo-worktrees"))
+	if loadErr != nil {
+		t.Fatalf("slots.Load: %v", loadErr)
+	}
+	if _, ok := reg.Slot("feature"); ok {
+		t.Fatalf("expected slot to be freed on rollback")
+	}
+
+	present, hasErr := hosts.Has(hostsFile, "feature")
+	if hasErr != nil {
+		t.Fatalf("hosts.Has: %v", hasErr)
+	}
+	if present {
+		t.Fatalf("expected hosts entry to be removed on rollback")
 	}
 }

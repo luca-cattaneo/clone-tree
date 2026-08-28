@@ -4,9 +4,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/luca-cattaneo/clone-tree/internal/config"
+	"github.com/luca-cattaneo/clone-tree/internal/hosts"
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
 
@@ -102,4 +104,73 @@ func TestRemoveCloneCoWDsts_GIVEN_missingDst_WHEN_called_THEN_noopWithoutError(t
 
 	// Must not panic or write anything for an already-absent destination.
 	removeCloneCoWDsts(cfg, "feature", 1)
+}
+
+func TestRemove_GIVEN_preRemoveHookAndDNSPattern_WHEN_removed_THEN_hookRunsAndHostsEntryDropped(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+
+	markerFile := filepath.Join(projectsDir, "pre-remove-marker.txt")
+	writeHookScript(t, repoDir, filepath.Join(".clone-tree", "hooks", "pre-remove.sh"),
+		"env | sort > "+markerFile+"\n")
+
+	hostsFile := filepath.Join(t.TempDir(), "hosts")
+	if err := os.WriteFile(hostsFile, nil, 0o644); err != nil {
+		t.Fatalf("write hostsFile: %v", err)
+	}
+	origHostsPath := hostsPath
+	hostsPath = hostsFile
+	t.Cleanup(func() { hostsPath = origHostsPath })
+
+	configYAML := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"local-{name}.dev.test\"\n" +
+		"max_slots: 9\n" +
+		"ports: {}\n" +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks:\n" +
+		"  pre_remove: .clone-tree/hooks/pre-remove.sh\n"
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	if err := createCmd.RunE(createCmd, []string{"feature"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	present, err := hosts.Has(hostsFile, "feature")
+	if err != nil {
+		t.Fatalf("hosts.Has after create: %v", err)
+	}
+	if !present {
+		t.Fatalf("expected create to register a hosts entry for feature")
+	}
+
+	removeForce = true
+	if err := removeCmd.RunE(removeCmd, []string{"feature"}); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	got, err := os.ReadFile(markerFile)
+	if err != nil {
+		t.Fatalf("ReadFile marker: expected pre_remove hook to run: %v", err)
+	}
+	if !strings.Contains(string(got), "CT_NAME=feature") {
+		t.Errorf("hook env %q does not contain CT_NAME=feature", got)
+	}
+
+	present, err = hosts.Has(hostsFile, "feature")
+	if err != nil {
+		t.Fatalf("hosts.Has after remove: %v", err)
+	}
+	if present {
+		t.Fatalf("expected remove to drop the hosts entry for feature")
+	}
 }

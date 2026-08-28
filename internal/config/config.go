@@ -46,8 +46,9 @@ type Files struct {
 	SymlinkSiblings []string   `yaml:"symlink_siblings"`
 }
 
-// Hooks are optional repo-local executables. Parsed but not invoked — hook
-// execution lands in M4.
+// Hooks are optional repo-local executables (paths relative to RepoRoot).
+// Run by internal/hooks with the instance env contract (CT_NAME, CT_SLOT,
+// CT_DNS, CT_WT_PATH, plus every port var) — see internal/hooks.Env.
 type Hooks struct {
 	PostCreate string `yaml:"post_create"`
 	PreRemove  string `yaml:"pre_remove"`

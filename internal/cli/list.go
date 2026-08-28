@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,9 +43,54 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		renderTable(os.Stdout, stdoutIsTTY(), []string{"Slot", "Name", "Branch", "Path"}, listRows(worktrees, reg.Slots()))
+		headers, rows := augmentListRows(filepath.Base(root), cfg, listRows(worktrees, reg.Slots()))
+		renderTable(os.Stdout, stdoutIsTTY(), headers, rows)
 		return nil
 	},
+}
+
+// augmentListRows appends a Containers column (running container count for
+// each row's compose project) to rows built by listRows, and — only when
+// the config declares ports — a column for the first sorted port var
+// showing its value at that row's slot. repo is the main repo's directory
+// basename, used to derive each worktree's compose project name.
+func augmentListRows(repo string, cfg *config.Config, rows [][]string) ([]string, [][]string) {
+	headers := []string{"Slot", "Name", "Branch", "Path", "Containers"}
+
+	vars := sortedPortVars(cfg.Ports)
+	var portVar string
+	if len(vars) > 0 {
+		portVar = vars[0]
+		headers = append(headers, portVar)
+	}
+
+	out := make([][]string, len(rows))
+	for i, row := range rows {
+		name := filepath.Base(row[3])
+		project := repo
+		if row[0] != "0" {
+			project = composeProjectName(repo, name)
+		}
+
+		augmented := append([]string{}, row...)
+		augmented = append(augmented, runningContainers(row[3], project))
+		if portVar != "" {
+			augmented = append(augmented, portColumnValue(cfg, row[0], portVar))
+		}
+		out[i] = augmented
+	}
+	return headers, out
+}
+
+// portColumnValue renders "VAR=value" for slotStr's computed value of
+// portVar, or "-" when slotStr isn't a real slot (the "-" placeholder for
+// a worktree missing from the registry).
+func portColumnValue(cfg *config.Config, slotStr, portVar string) string {
+	slot, err := strconv.Atoi(slotStr)
+	if err != nil {
+		return "-"
+	}
+	return fmt.Sprintf("%s=%d", portVar, cfg.PortValues(slot)[portVar])
 }
 
 // listRows converts worktrees into table rows: main first (slot "0"), then

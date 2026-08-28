@@ -9,6 +9,8 @@ import (
 	"github.com/luca-cattaneo/clone-tree/internal/config"
 	"github.com/luca-cattaneo/clone-tree/internal/fsops"
 	"github.com/luca-cattaneo/clone-tree/internal/gitwt"
+	"github.com/luca-cattaneo/clone-tree/internal/hooks"
+	"github.com/luca-cattaneo/clone-tree/internal/hosts"
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 	"github.com/spf13/cobra"
 )
@@ -131,6 +133,18 @@ var createCmd = &cobra.Command{
 		// never undone on rollback or `ct remove` — removing one would
 		// break every other worktree's sibling mount.
 		if err = fsops.SymlinkSiblings(cfg.Files.SymlinkSiblings, vars["projects_dir"], cfg.WorktreesDir); err != nil {
+			return err
+		}
+
+		if cfg.DNSPattern != "" {
+			dns := vars["dns"]
+			if err = hosts.Add(hostsPath, name, dns); err != nil {
+				return err
+			}
+			rollback = append(rollback, func() { _ = hosts.Remove(hostsPath, name) })
+		}
+
+		if err = hooks.Run(hookAbsPath(root, cfg.Hooks.PostCreate), target, hooks.Env(name, slot, vars["dns"], target, cfg.PortValues(slot))); err != nil {
 			return err
 		}
 

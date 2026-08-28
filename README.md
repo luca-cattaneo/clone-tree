@@ -18,10 +18,13 @@ export PATH="$HOME/go/bin:$PATH"
 
 | Command | Does |
 |---|---|
-| `ct create <name> [--branch b]` | slot → `git worktree add` → `.env` → `files:` (see below). Any failure rolls everything back. Branch defaults to `<name>`, created from HEAD if missing. |
-| `ct remove <name\|slot>` | removes worktree, its `clone_cow` dirs, frees slot. `--force` defaults to `true` (the generated `.env` blocks git's safe remove). Slot 0 = main repo, not removable. |
-| `ct list` | slot / name / branch / path. Main = slot 0. Unregistered worktree = `-`. |
+| `ct create <name> [--branch b]` | slot → `git worktree add` → `.env` → `files:` → `hosts:` entry (if `dns_pattern` set) → `post_create` hook (see below). Any failure rolls everything back. Branch defaults to `<name>`, created from HEAD if missing. |
+| `ct remove <name\|slot>` | `pre_remove` hook (if configured) → `docker compose down -v` (best-effort if the worktree has no compose file, else propagated) → removes worktree, its `clone_cow` dirs, its hosts entry, frees slot. `--force` defaults to `true` (the generated `.env` blocks git's safe remove). Slot 0 = main repo, not removable. |
+| `ct list` | slot / name / branch / path / running container count. Plus a `VAR=value` column for the first sorted `ports:` var, when configured. Main = slot 0. Unregistered worktree = `-`. |
 | `ct exec <name> -- <cmd>` | run `<cmd>` in the worktree dir, exit code propagated. |
+| `ct start <name\|slot>` / `ct stop <name\|slot>` | `docker compose up -d` / `down` in the worktree dir, `COMPOSE_PROJECT_NAME=<repo>-<name>`. Requires a `.clone-tree` config. |
+| `ct ports [name]` | no arg: table of every registered worktree (+ main at slot 0) × every configured port var. With `name`: `Var`/`Value` table for that worktree. |
+| `ct hosts [name]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓`/`-`). |
 
 Global flag: `--config <path>` (skips lookup + scaffold).
 
@@ -91,6 +94,42 @@ files:
 `ct create` probes every configured port for the candidate slot (bind + connect) before
 touching anything; a busy port aborts with nothing provisioned.
 
+## Hooks
+
+Optional repo-local executables, declared under `hooks:` in `config.yaml`, paths relative
+to the repo root:
+
+```yaml
+hooks:
+  post_create: .clone-tree/hooks/post-create.sh   # runs after files:/hosts:, before create returns
+  pre_remove:  .clone-tree/hooks/pre-remove.sh     # runs first in `ct remove`, before compose down/deletion
+```
+
+Both receive the instance's env contract: `CT_NAME`, `CT_SLOT`, `CT_DNS`, `CT_WT_PATH`, plus
+one `VAR=value` entry per configured port var. `cwd` is the worktree dir. A missing hook
+path is an error; an empty (unset) one is a no-op. A `post_create` failure fails `ct create`
+and triggers rollback (see below); a `pre_remove` failure aborts `ct remove` before anything
+is torn down.
+
+## DNS / `/etc/hosts`
+
+When `dns_pattern` is non-empty, `ct create` appends a `127.0.0.1 <dns>  # clone-tree:<name>`
+line to `/etc/hosts` (writing to a root-owned file falls back to `sudo tee`), and `ct remove`
+drops it. `ct hosts [name]` lists every registered worktree's DNS and whether it's currently
+present. Only clone-tree-owned lines (marked by the trailing comment) are ever touched —
+every other line in the file is preserved verbatim and in place.
+
+## Rollback
+
+`ct create` pushes an undo for every side effect onto a LIFO stack as it succeeds: slot
+release, worktree removal (which also removes the generated `.env` and every `files.copy`
+/ `files.ide` / `files.hardlink` entry, since they live inside the worktree), each
+`files.clone_cow` destination, and the `/etc/hosts` entry. Any failure — including the
+`post_create` hook — unwinds that stack in reverse order, so a half-provisioned instance
+never survives a failed create. `files.symlink_siblings` is the one exception: it's shared
+across every worktree in `worktrees_dir`, so it's created idempotently but never undone —
+removing it on one worktree's rollback would break every other worktree's sibling mount.
+
 ## Not yet
 
-Hooks, DNS/hosts, `start`/`stop`, `doctor` — see `PLAN.md`.
+`doctor` — see `PLAN.md`.
