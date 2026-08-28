@@ -1,0 +1,188 @@
+package gitwt
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// Worktree describes one entry from `git worktree list --porcelain`.
+type Worktree struct {
+	Path     string
+	Branch   string
+	Bare     bool
+	Detached bool
+}
+
+// ParsePorcelain parses the output of `git worktree list --porcelain` into
+// a slice of Worktree. It is a pure function so it is exhaustively
+// unit-testable without a real git repo.
+func ParsePorcelain(output string) []Worktree {
+	var result []Worktree
+	var cur *Worktree
+
+	flush := func() {
+		if cur != nil {
+			result = append(result, *cur)
+			cur = nil
+		}
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimRight(line, "\r")
+		switch {
+		case line == "":
+			flush()
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			cur = &Worktree{Path: strings.TrimPrefix(line, "worktree ")}
+		case strings.HasPrefix(line, "branch "):
+			if cur != nil {
+				cur.Branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+			}
+		case line == "bare":
+			if cur != nil {
+				cur.Bare = true
+			}
+		case line == "detached":
+			if cur != nil {
+				cur.Detached = true
+			}
+		}
+	}
+	flush()
+
+	return result
+}
+
+// List returns all worktrees registered against the main repo containing dir.
+func List(dir string) ([]Worktree, error) {
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git worktree list: %s", strings.TrimSpace(stderr.String()))
+	}
+	return ParsePorcelain(stdout.String()), nil
+}
+
+// FindByName returns the worktree whose path basename matches name.
+func FindByName(worktrees []Worktree, name string) (Worktree, bool) {
+	for _, wt := range worktrees {
+		if filepath.Base(wt.Path) == name {
+			return wt, true
+		}
+	}
+	return Worktree{}, false
+}
+
+// refExists reports whether ref exists in the repo at dir.
+func refExists(dir, ref string) (bool, error) {
+	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", ref)
+	cmd.Dir = dir
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return false, nil
+	}
+	return false, err
+}
+
+// BranchExists reports whether refs/heads/<branch> exists in the repo at dir.
+func BranchExists(dir, branch string) (bool, error) {
+	return refExists(dir, "refs/heads/"+branch)
+}
+
+// RemoteBranchExists reports whether refs/remotes/origin/<branch> exists in
+// the repo at dir.
+func RemoteBranchExists(dir, branch string) (bool, error) {
+	return refExists(dir, "refs/remotes/origin/"+branch)
+}
+
+// Create adds a new worktree at path for branch. If branch does not exist
+// locally, it fetches origin/<branch> first (ignoring fetch errors, e.g. no
+// remote configured or offline) and, when that remote branch exists, creates
+// branch tracking it; otherwise it creates branch from the current HEAD, as
+// before.
+func Create(dir, path, branch string) error {
+	exists, err := BranchExists(dir, branch)
+	if err != nil {
+		return err
+	}
+
+	var cmd *exec.Cmd
+	switch {
+	case exists:
+		cmd = exec.Command("git", "worktree", "add", path, branch)
+	default:
+		fetchCmd := exec.Command("git", "fetch", "origin", branch)
+		fetchCmd.Dir = dir
+		_ = fetchCmd.Run()
+
+		remoteExists, err := RemoteBranchExists(dir, branch)
+		if err != nil {
+			return err
+		}
+		if remoteExists {
+			cmd = exec.Command("git", "worktree", "add", "--track", "-b", branch, path, "origin/"+branch)
+		} else {
+			cmd = exec.Command("git", "worktree", "add", "-b", branch, path)
+		}
+	}
+	cmd.Dir = dir
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git worktree add: %s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// Remove removes the worktree at path.
+func Remove(dir, path string, force bool) error {
+	args := []string{"worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, path)
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// Exec runs args[0] with args[1:] in dir, inheriting the current process's
+// stdio. It returns the child's exit code; err is non-nil only when the
+// command could not be started at all (e.g. binary not found).
+func Exec(dir string, args []string) (int, error) {
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = dir
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err == nil {
+		return 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), nil
+	}
+	return 1, err
+}
