@@ -178,7 +178,7 @@ internal/hosts  /etc/hosts add/remove (sudo)
 | M1 | **worktree core = v1**: `create/remove/list/exec`, works on any git repo | ✅ done — `ct create x && ct list && ct remove x` with no `.clone-tree/` |
 | M2 | config load/validate + **auto-scaffold** (compose port scan, gitignored-files scan), slots registry, real slot column in `list`, ports, `.env` gen | first run on a config-less repo generates a sane `.clone-tree/config.yaml`; create+remove round-trip on a fixture repo |
 | M3 | fsops: copy/hardlink/symlink_siblings/CoW clone with platform fallbacks | ✅ done — fixture with fake datadir; APFS clone verified on macOS |
-| M4 | hooks, /etc/hosts, rollback pipeline, `start/stop/ports/hosts` | kill -9 mid-create leaves zero residue after auto-rollback |
+| M4 | hooks, /etc/hosts, rollback pipeline, `start/stop/ports/hosts` | ✅ done — failing post_create hook rolls back slot+worktree+CoW+hosts (tested) |
 | M5 | **TagPay adoption**: write `.clone-tree/config.yaml` + port OAuth/.idea logic into `post-create.sh`; shim `tagpay-worktree.sh` → `ct` | existing worktrees still listed; new worktree boots, client portal login works |
 | M6 | `ct doctor`, completions, README with `go install` instructions | teammate onboards with `go install github.com/luca-cattaneo/clone-tree/cmd/ct@latest` |
 
