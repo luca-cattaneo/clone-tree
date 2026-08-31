@@ -26,6 +26,7 @@ export PATH="$HOME/go/bin:$PATH"
 | `ct start <name\|slot>` / `ct stop <name\|slot>` | `docker compose up -d` / `down` in the worktree dir, `COMPOSE_PROJECT_NAME=<repo>-<name>`. Requires a `.clone-tree` config. |
 | `ct ports [name|slot]` | no arg: table of every registered worktree (+ main at slot 0) × every configured port var. With `name` or slot: `Var`/`Value` table for that worktree. |
 | `ct hosts [name|slot]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓` clone-tree-owned, `✓ (unmanaged)` present but not ct-managed, `-` absent). With `name`/slot and a non-empty `urls:`, also prints a Service/URL table underneath (see Config below). |
+| `ct doctor` | diagnoses the repo's setup: config validity, literal (non-`${VAR}`) compose port bindings, busy ports per registered worktree (plus main's base values), orphan slots (registered but the worktree dir is gone, or vice versa), configured hook paths, and `/etc/hosts` DNS entries. No config yet is a `⚠` (bare mode), not an error. Plain grouped `✓`/`✗`/`⚠` lines — not a table. Exits 1 if any check is `✗`. |
 
 Global flag: `--config <path>` (skips lookup + scaffold).
 
@@ -158,7 +159,3 @@ release, worktree removal (which also removes the generated `.env` and every `fi
 never survives a failed create. `files.symlink_siblings` is the one exception: it's shared
 across every worktree in `worktrees_dir`, so it's created idempotently but never undone —
 removing it on one worktree's rollback would break every other worktree's sibling mount.
-
-## Not yet
-
-`doctor` — see `PLAN.md`.

@@ -180,7 +180,7 @@ internal/hosts  /etc/hosts add/remove (sudo)
 | M3 | fsops: copy/hardlink/symlink_siblings/CoW clone with platform fallbacks | ✅ done — fixture with fake datadir; APFS clone verified on macOS |
 | M4 | hooks, /etc/hosts, rollback pipeline, `start/stop/ports/hosts` | ✅ done — failing post_create hook rolls back slot+worktree+CoW+hosts (tested) |
 | M5 | **TagPay adoption**: write `.clone-tree/config.yaml` + port OAuth/.idea logic into `post-create.sh`; shim `tagpay-worktree.sh` → `ct` | existing worktrees still listed; new worktree boots, client portal login works |
-| M6 | `ct doctor`, completions, README with `go install` instructions | teammate onboards with `go install github.com/luca-cattaneo/clone-tree/cmd/ct@latest` |
+| M6 | `ct doctor`, completions, README with `go install` instructions | ✅ done — `ct doctor` checks config/literal ports/busy ports/orphan slots/hooks/dns, exit 1 on any ✗; `ct completion` (cobra default) + README zsh one-liner; README Install section verified against go.mod's real module path |
 
 **Doc rule — README.md is the concise human-readable doc and MUST be updated in the
 same iteration as any behavior change** (new command/flag, file location, config

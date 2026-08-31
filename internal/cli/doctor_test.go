@@ -1,0 +1,284 @@
+package cli
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/luca-cattaneo/clone-tree/internal/slots"
+)
+
+// runDoctorCmd runs doctorCmd.RunE, capturing its stdout report.
+func runDoctorCmd(t *testing.T) (string, error) {
+	t.Helper()
+
+	r, w, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("Pipe: %v", pipeErr)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	err := doctorCmd.RunE(doctorCmd, nil)
+	_ = w.Close()
+	os.Stdout = orig
+
+	out, readErr := io.ReadAll(r)
+	if readErr != nil {
+		t.Fatalf("ReadAll: %v", readErr)
+	}
+	return string(out), err
+}
+
+func writeMinimalConfig(t *testing.T, repoDir, extra string) {
+	t.Helper()
+	yaml := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"\"\n" +
+		"max_slots: 9\n" +
+		"ports: {}\n" +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks: {}\n" +
+		extra
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+}
+
+func TestDoctorCmd_GIVEN_noConfigInRepo_WHEN_run_THEN_bareModeWarningAndNoFailure(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	chdir(t, repoDir)
+	configPath = ""
+
+	out, err := runDoctorCmd(t)
+
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if !strings.Contains(out, "⚠ no config — bare mode; run ct create-config") {
+		t.Fatalf("expected bare-mode warning, got:\n%s", out)
+	}
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".clone-tree")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected doctor to never scaffold .clone-tree/, stat err: %v", statErr)
+	}
+}
+
+func TestDoctorCmd_GIVEN_healthyRegisteredWorktree_WHEN_run_THEN_allChecksPass(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	if err := createCmd.RunE(createCmd, []string{"feature"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	out, err := runDoctorCmd(t)
+
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if strings.Contains(out, "✗") {
+		t.Fatalf("expected no failing checks, got:\n%s", out)
+	}
+}
+
+func TestDoctorCmd_GIVEN_orphanRegisteredSlot_WHEN_run_THEN_orphanSlotFails(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
+	reg, err := slots.Load(worktreesDir)
+	if err != nil {
+		t.Fatalf("slots.Load: %v", err)
+	}
+	// Register a slot without ever creating the worktree directory itself.
+	if _, err := reg.Allocate("stale", 9); err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+
+	out, err := runDoctorCmd(t)
+
+	if !errors.Is(err, ErrChecksFailed) {
+		t.Fatalf("expected ErrChecksFailed, got %v", err)
+	}
+	if !strings.Contains(out, "orphan slot 1 (stale) — run ct remove stale") {
+		t.Fatalf("expected orphan slot line, got:\n%s", out)
+	}
+}
+
+// dbPortFixture creates a fixture repo with a single-var config (DB_PORT,
+// whose slot-1 value is the returned port), and registers "feature" at
+// slot 1 while that port is still free — create's own busy-port probe
+// would otherwise abort the whole create. The caller decides afterwards
+// whether/how to bind slot1Port and how to stub composeRunner.
+func dbPortFixture(t *testing.T) (repoDir string, slot1Port int) {
+	t.Helper()
+	_, repoDir = newCreateFixtureRepo(t)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	slot1Port = ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	yaml := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"\"\n" +
+		"max_slots: 9\n" +
+		fmt.Sprintf("ports:\n  DB_PORT: {base: %d, step: 10}\n", slot1Port-10) +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks: {}\n"
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+	if err := createCmd.RunE(createCmd, []string{"feature"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	return repoDir, slot1Port
+}
+
+// stubComposeRunner overrides the composeRunner seam for the duration of
+// the test, restoring it on cleanup.
+func stubComposeRunner(t *testing.T, fn func(dir, project string, args ...string) ([]byte, error)) {
+	t.Helper()
+	orig := composeRunner
+	composeRunner = fn
+	t.Cleanup(func() { composeRunner = orig })
+}
+
+func TestDoctorCmd_GIVEN_stackNotRunningAndPortBusy_WHEN_run_THEN_busyPortFails(t *testing.T) {
+	_, slot1Port := dbPortFixture(t)
+
+	// composeRunner confirms zero running containers (no error, empty
+	// output) — a genuine external conflict, so busy must fail.
+	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
+		return nil, nil
+	})
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", slot1Port))
+	if err != nil {
+		t.Fatalf("re-Listen on %d: %v", slot1Port, err)
+	}
+	defer ln.Close()
+
+	out, err := runDoctorCmd(t)
+
+	if !errors.Is(err, ErrChecksFailed) {
+		t.Fatalf("expected ErrChecksFailed, got %v", err)
+	}
+	if !strings.Contains(out, "✗ feature (slot 1): busy ports:") || !strings.Contains(out, "DB_PORT") {
+		t.Fatalf("expected a busy DB_PORT ✗ line for feature, got:\n%s", out)
+	}
+}
+
+func TestDoctorCmd_GIVEN_stackRunning_WHEN_run_THEN_informationalOKAndPortsNotProbed(t *testing.T) {
+	_, slot1Port := dbPortFixture(t)
+
+	// composeRunner reports 2 running containers for feature's own stack.
+	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
+		return []byte("abc123\ndef456\n"), nil
+	})
+
+	// Bind the exact port anyway: proves a running stack short-circuits
+	// straight to the informational ✓ instead of probing ports at all —
+	// if it probed, this would show up as a busy-port ✗/⚠.
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", slot1Port))
+	if err != nil {
+		t.Fatalf("re-Listen on %d: %v", slot1Port, err)
+	}
+	defer ln.Close()
+
+	out, err := runDoctorCmd(t)
+
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if !strings.Contains(out, "✓ feature (slot 1): stack running (2 containers)") {
+		t.Fatalf("expected the informational stack-running line, got:\n%s", out)
+	}
+	if strings.Contains(out, "DB_PORT") {
+		t.Fatalf("expected ports NOT to be probed when the stack is running, got:\n%s", out)
+	}
+}
+
+func TestDoctorCmd_GIVEN_dockerUnavailableAndPortBusy_WHEN_run_THEN_busyPortWarnsNotFails(t *testing.T) {
+	_, slot1Port := dbPortFixture(t)
+
+	// composeRunner can't answer at all (docker missing/erroring) — a busy
+	// port can't be told apart from "it's just this worktree's own stack",
+	// so it must warn, not fail.
+	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
+		return nil, errors.New("docker: command not found")
+	})
+
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", slot1Port))
+	if err != nil {
+		t.Fatalf("re-Listen on %d: %v", slot1Port, err)
+	}
+	defer ln.Close()
+
+	out, err := runDoctorCmd(t)
+
+	if err != nil {
+		t.Fatalf("doctor: %v (expected a docker-unavailable busy port to warn, not fail)", err)
+	}
+	if !strings.Contains(out, "⚠ feature (slot 1): busy ports:") || !strings.Contains(out, "DB_PORT") {
+		t.Fatalf("expected a busy DB_PORT ⚠ line for feature, got:\n%s", out)
+	}
+}
+
+func TestDoctorCmd_GIVEN_missingPostCreateHook_WHEN_run_THEN_hookCheckFails(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	// hooks.post_create points at a script that is never written.
+	yaml := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"\"\n" +
+		"max_slots: 9\n" +
+		"ports: {}\n" +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks:\n  post_create: .clone-tree/hooks/post-create.sh\n"
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	out, err := runDoctorCmd(t)
+
+	if !errors.Is(err, ErrChecksFailed) {
+		t.Fatalf("expected ErrChecksFailed, got %v", err)
+	}
+	if !strings.Contains(out, "✗ post_create hook not found:") {
+		t.Fatalf("expected missing hook line, got:\n%s", out)
+	}
+}

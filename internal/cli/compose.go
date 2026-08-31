@@ -57,17 +57,30 @@ var composeRunner = func(dir, project string, args ...string) ([]byte, error) {
 // never fail just because docker isn't installed or a worktree has no
 // stack yet.
 func runningContainers(dir, project string) string {
-	out, err := composeRunner(dir, project, "ps", "-q", "--status", "running")
-	if err != nil {
+	count, ok := composeRunningCount(dir, project)
+	if !ok {
 		return "-"
 	}
-	var count int
+	return fmt.Sprintf("%d", count)
+}
+
+// composeRunningCount is runningContainers' underlying probe, surfacing the
+// "docker/compose couldn't answer at all" case as ok=false instead of
+// collapsing it into the same "-" as "confirmed zero containers running".
+// doctor's busy-ports check needs that distinction: a worktree confirmed
+// NOT running with a busy port is a real conflict (✗), but "couldn't tell"
+// must not be reported as one (falls back to a ⚠ instead).
+func composeRunningCount(dir, project string) (count int, ok bool) {
+	out, err := composeRunner(dir, project, "ps", "-q", "--status", "running")
+	if err != nil {
+		return 0, false
+	}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if line != "" {
 			count++
 		}
 	}
-	return fmt.Sprintf("%d", count)
+	return count, true
 }
 
 // composeFileCandidates are the compose base filenames docker compose itself

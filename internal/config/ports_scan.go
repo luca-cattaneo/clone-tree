@@ -122,6 +122,38 @@ func scanComposePorts(root string, maxSlots int) (ports []scaffoldPort, literalC
 	return resolvePorts(raws, dotenv, maxSlots), literalPortComments(raws), discovery, nil
 }
 
+// LiteralBinding is one host-port binding compose exposes without a ${VAR}
+// name — clone-tree never rewrites compose YAML, so it can never be made
+// slot-aware. Surfaced by `ct doctor`'s ports check: one entry per binding,
+// unlike literalPortComments (used by Scaffold) which groups every literal
+// port on a service into a single comment.
+type LiteralBinding struct {
+	Service string
+	Port    int
+}
+
+// ScanLiteralPortBindings discovers every non-${VAR}-parameterized host-port
+// binding in root's compose files, one LiteralBinding per binding. A repo
+// with no compose files yields (nil, nil), same as scanComposePorts.
+func ScanLiteralPortBindings(root string) ([]LiteralBinding, error) {
+	files, err := composeFiles(root)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+
+	raws, _ := extractBindings(root, files)
+	var out []LiteralBinding
+	for _, rb := range raws {
+		if rb.varName == "" {
+			out = append(out, LiteralBinding{Service: rb.svcName, Port: rb.literal})
+		}
+	}
+	return out, nil
+}
+
 // composeFiles resolves the file list docker compose itself would use:
 // <root>/.env's COMPOSE_FILE (split on COMPOSE_PATH_SEPARATOR, default ":")
 // when set, else the first compose default found plus its matching

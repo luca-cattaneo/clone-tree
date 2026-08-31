@@ -18,11 +18,16 @@ func main() {
 
 	// ScaffoldedError renders its own multi-line, colorized checklist — the
 	// usual "ct: " prefix would land in front of the first line only and
-	// break the block's readability.
+	// break the block's readability. cli.ErrChecksFailed is `ct doctor`'s
+	// sentinel for "the report I already printed to stdout found a ✗" — it
+	// carries nothing to add, so it prints nothing further.
 	var scaffolded *config.ScaffoldedError
-	if errors.As(err, &scaffolded) {
+	switch {
+	case errors.As(err, &scaffolded):
 		fmt.Fprintln(os.Stderr, scaffolded.Error())
-	} else {
+	case errors.Is(err, cli.ErrChecksFailed):
+		// doctor's own report already explains the failure.
+	default:
 		fmt.Fprintf(os.Stderr, "ct: %v\n", err)
 	}
 	os.Exit(1)
