@@ -23,8 +23,8 @@ export PATH="$HOME/go/bin:$PATH"
 | `ct list` | slot / name / branch / path / running container count. Plus a `VAR=value` column for the first sorted `ports:` var, when configured. Main = slot 0. Unregistered worktree = `-`. |
 | `ct exec <name> -- <cmd>` | run `<cmd>` in the worktree dir, exit code propagated. |
 | `ct start <name\|slot>` / `ct stop <name\|slot>` | `docker compose up -d` / `down` in the worktree dir, `COMPOSE_PROJECT_NAME=<repo>-<name>`. Requires a `.clone-tree` config. |
-| `ct ports [name]` | no arg: table of every registered worktree (+ main at slot 0) × every configured port var. With `name`: `Var`/`Value` table for that worktree. |
-| `ct hosts [name]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓`/`-`). |
+| `ct ports [name|slot]` | no arg: table of every registered worktree (+ main at slot 0) × every configured port var. With `name` or slot: `Var`/`Value` table for that worktree. |
+| `ct hosts [name|slot]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓`/`-`). |
 
 Global flag: `--config <path>` (skips lookup + scaffold).
 
@@ -81,7 +81,7 @@ max_slots: 9
 ports:
   DB_PORT: {base: 3306, step: 10}         # slot 2 → 3326
 env:
-  SERVER_NAME: "app-{name}"               # templated: {name} {slot} {repo} {projects_dir} {dns} + port vars
+  SERVER_NAME: "app-{name}"               # templated: {name} {name_lower} {slot} {dns} {repo} {projects_dir} {dns} + port vars
 files:
   ide:       [.idea/]                     # same semantics as copy; own key since IDE dirs usually need per-worktree patching (post_create hook)
   copy:      [conf/local.php]             # relative to repo root, recursive; missing → warn+skip
