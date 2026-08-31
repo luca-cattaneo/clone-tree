@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -99,17 +100,48 @@ func hasComposeFile(dir string) bool {
 	return false
 }
 
-// composeDown runs `docker compose down -v` for project in dir (typically a
-// worktree about to be removed). When dir has no compose file, nothing was
-// ever brought up (docker may not even be installed) so a failure is
-// swallowed; when a compose file is present, a real stack is expected to
-// tear down cleanly and a failure is propagated.
+// composeDown runs `docker compose down -v --remove-orphans` for project in
+// dir (typically a worktree about to be removed). --remove-orphans also
+// tears down one-off containers (e.g. `docker compose run` husks) that
+// belong to project but aren't declared in the compose file, so they never
+// survive as residue after the worktree itself is gone. When dir has no
+// compose file, nothing was ever brought up (docker may not even be
+// installed) so a failure is swallowed; when a compose file is present, a
+// real stack is expected to tear down cleanly and a failure is propagated.
 func composeDown(dir, project string) error {
-	_, err := composeRunner(dir, project, "down", "-v")
+	_, err := composeRunner(dir, project, "down", "-v", "--remove-orphans")
 	if err != nil && !hasComposeFile(dir) {
 		return nil
 	}
 	return err
+}
+
+// composeProject is one entry of `docker compose ls -a --format json`'s
+// output — only the field doctor's orphan-stacks check needs.
+type composeProject struct {
+	Name string `json:"Name"`
+}
+
+// composeProjects lists every docker compose project name known to the
+// daemon (running or stopped, -a), via the composeRunner seam so it's
+// stubbable without a real docker binary. project/dir don't matter to `ls`
+// itself, but composeRunner needs values to build the command.
+func composeProjects(root string) ([]string, error) {
+	out, err := composeRunner(root, "", "ls", "-a", "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+
+	var projects []composeProject
+	if err := json.Unmarshal(out, &projects); err != nil {
+		return nil, err
+	}
+
+	names := make([]string, len(projects))
+	for i, p := range projects {
+		names[i] = p.Name
+	}
+	return names, nil
 }
 
 // composeProjectName is the COMPOSE_PROJECT_NAME ct assigns a worktree's

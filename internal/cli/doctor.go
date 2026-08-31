@@ -105,6 +105,7 @@ func runDoctor(root, overridePath string) []doctorGroup {
 	return append(groups,
 		checkBusyPorts(root, cfg, reg),
 		checkOrphanSlots(cfg, reg),
+		checkOrphanStacks(root, reg),
 		checkHooks(root, cfg),
 		checkDNS(cfg, reg),
 	)
@@ -246,6 +247,44 @@ func checkOrphanSlots(cfg *config.Config, reg *slots.Registry) doctorGroup {
 		lines = []doctorLine{{sevOK, "no orphan slots"}}
 	}
 	return doctorGroup{title: "orphan slots", lines: lines}
+}
+
+// checkOrphanStacks flags docker compose projects belonging to this repo
+// (matching composeProjectName's <repo>-<name> prefix) that no longer
+// correspond to any registered worktree — the residue left behind when a
+// worktree dir is deleted without its compose stack (containers, volumes,
+// network) ever being torn down first. A project outside that prefix isn't
+// this repo's concern at all, and the bare repo project (main's own,
+// unprefixed, per composeProjectName) is never flagged. Docker being
+// unavailable entirely (composeProjects erroring) collapses to a single ⚠ —
+// same reasoning as busy ports' composeRunner probe: "couldn't tell" must
+// not be misreported as a finding.
+func checkOrphanStacks(root string, reg *slots.Registry) doctorGroup {
+	repo := filepath.Base(root)
+
+	projects, err := composeProjects(root)
+	if err != nil {
+		return doctorGroup{title: "orphan stacks", lines: []doctorLine{{sevWarn, fmt.Sprintf("docker compose ls unavailable — skipped (%v)", err)}}}
+	}
+
+	known := map[string]bool{strings.ToLower(repo): true}
+	for name := range reg.Slots() {
+		known[composeProjectName(repo, name)] = true
+	}
+	prefix := strings.ToLower(repo) + "-"
+
+	var lines []doctorLine
+	for _, p := range projects {
+		if known[p] || !strings.HasPrefix(p, prefix) {
+			continue
+		}
+		lines = append(lines, doctorLine{sevFail, fmt.Sprintf("orphan compose project %s — docker compose -p %s down -v --remove-orphans", p, p)})
+	}
+
+	if len(lines) == 0 {
+		lines = []doctorLine{{sevOK, "no orphan compose projects"}}
+	}
+	return doctorGroup{title: "orphan stacks", lines: lines}
 }
 
 // checkHooks verifies every configured hook path exists and is executable.

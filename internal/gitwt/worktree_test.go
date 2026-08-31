@@ -234,6 +234,31 @@ func TestCreate_GIVEN_branchExistsOnlyOnRemote_WHEN_created_THEN_tracksRemoteBra
 	}
 }
 
+func TestPrune_GIVEN_worktreeDirManuallyDeleted_WHEN_pruned_THEN_metadataRemoved(t *testing.T) {
+	repo := newFixtureRepo(t)
+	wtDir := repo + "-worktrees"
+	target := wtDir + "/feature"
+
+	if err := gitwt.Create(repo, target, "feature"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+
+	if err := gitwt.Prune(repo); err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+
+	worktrees, err := gitwt.List(repo)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if _, ok := gitwt.FindByName(worktrees, "feature"); ok {
+		t.Fatalf("expected pruned worktree metadata to be gone from git worktree list")
+	}
+}
+
 func TestExec_GIVEN_commandExitingNonZero_WHEN_run_THEN_exitCodePropagated(t *testing.T) {
 	repo := newFixtureRepo(t)
 

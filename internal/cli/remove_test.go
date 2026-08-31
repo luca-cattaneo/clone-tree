@@ -121,6 +121,43 @@ func TestRemoveCmd_GIVEN_noConfigInRepo_WHEN_run_THEN_errorsWithoutScaffolding(t
 	}
 }
 
+func TestRemove_GIVEN_worktreeDirManuallyDeleted_WHEN_removed_THEN_cleansSlotAndRegistryWithoutError(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	if err := createCmd.RunE(createCmd, []string{"feature"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Simulate the real-world residue: the worktree directory was deleted by
+	// hand (rm -rf) instead of via `ct remove`, leaving stale slot-registry
+	// and git-worktree-metadata entries behind.
+	target := filepath.Join(projectsDir, "repo-worktrees", "feature")
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatalf("simulate manual deletion: %v", err)
+	}
+
+	removeForce = true
+	if err := removeCmd.RunE(removeCmd, []string{"feature"}); err != nil {
+		t.Fatalf("remove on half-deleted worktree: %v", err)
+	}
+
+	reg, err := slots.Load(filepath.Join(projectsDir, "repo-worktrees"))
+	if err != nil {
+		t.Fatalf("slots.Load: %v", err)
+	}
+	if _, ok := reg.Slot("feature"); ok {
+		t.Fatalf("expected feature to be freed from the slots registry")
+	}
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("expected worktree dir to remain absent, stat err: %v", statErr)
+	}
+}
+
 func TestRemove_GIVEN_preRemoveHookAndDNSPattern_WHEN_removed_THEN_hookRunsAndHostsEntryDropped(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 

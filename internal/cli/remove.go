@@ -70,7 +70,7 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
-		if err := gitwt.Remove(root, wt.Path, removeForce); err != nil {
+		if err := forceRemoveWorktree(root, wt.Path, removeForce); err != nil {
 			return err
 		}
 
@@ -106,6 +106,34 @@ func removeCloneCoWDsts(cfg *config.Config, name string, slot int) {
 		}
 		fmt.Println("removed", dst)
 	}
+}
+
+// forceRemoveWorktree removes the worktree at path (registered against
+// root) and guarantees it's gone afterward, even on a half-broken instance
+// where the directory was already deleted by hand or gitwt.Remove otherwise
+// fails to fully clean up. Shared by `ct remove` and `ct create`'s rollback
+// so worktree-removal residue never diverges between the two callers.
+//
+// force=false keeps git's safe default: a real failure (e.g. a dirty
+// worktree git itself refuses to touch) is propagated as-is, and nothing
+// is force-deleted. force=true (ct's default) means the caller already
+// consented to destroying whatever's there, so any gitwt.Remove error is
+// swallowed and the directory is force-deleted as a fallback — a dir
+// already absent is not an error. Either way, a final `git worktree prune`
+// clears any stale metadata left pointing at a directory that's now gone;
+// its own failure is likewise best-effort and never propagated.
+func forceRemoveWorktree(root, path string, force bool) error {
+	err := gitwt.Remove(root, path, force)
+	if err != nil && !force {
+		return err
+	}
+
+	if rmErr := os.RemoveAll(path); rmErr != nil {
+		return fmt.Errorf("remove worktree dir: %w", rmErr)
+	}
+	_ = gitwt.Prune(root)
+
+	return nil
 }
 
 // resolveNameOrSlot accepts either a worktree name or a slot number

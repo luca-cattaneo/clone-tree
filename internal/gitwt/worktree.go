@@ -166,6 +166,22 @@ func Remove(dir, path string, force bool) error {
 	return nil
 }
 
+// Prune removes administrative metadata for worktrees whose working
+// directory no longer exists — e.g. one deleted by hand (rm -rf) instead of
+// via Remove, which Remove itself already tolerates but doesn't always
+// clean up after. Best-effort by design in every caller: a prune failure
+// must never block `ct remove`/`ct create`'s rollback from completing.
+func Prune(dir string) error {
+	cmd := exec.Command("git", "worktree", "prune")
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git worktree prune: %s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
 // Exec runs args[0] with args[1:] in dir, inheriting the current process's
 // stdio. It returns the child's exit code; err is non-nil only when the
 // command could not be started at all (e.g. binary not found).

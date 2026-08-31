@@ -252,6 +252,60 @@ func TestDoctorCmd_GIVEN_dockerUnavailableAndPortBusy_WHEN_run_THEN_busyPortWarn
 	}
 }
 
+func TestDoctorCmd_GIVEN_orphanComposeProject_WHEN_run_THEN_orphanStackFails(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	if err := createCmd.RunE(createCmd, []string{"feature"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// repo-feature: registered worktree, must not be flagged. repo: bare
+	// main project, must not be flagged. repo-stale: no registered worktree
+	// behind it — the orphan. other-thing: outside repo's project prefix
+	// entirely, not this repo's concern.
+	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
+		return []byte(`[{"Name":"repo-feature"},{"Name":"repo"},{"Name":"repo-stale"},{"Name":"other-thing"}]`), nil
+	})
+
+	out, err := runDoctorCmd(t)
+
+	if !errors.Is(err, ErrChecksFailed) {
+		t.Fatalf("expected ErrChecksFailed, got %v", err)
+	}
+	if !strings.Contains(out, "✗ orphan compose project repo-stale — docker compose -p repo-stale down -v --remove-orphans") {
+		t.Fatalf("expected orphan stack line for repo-stale, got:\n%s", out)
+	}
+	if strings.Count(out, "orphan compose project") != 1 {
+		t.Fatalf("expected exactly one orphan compose project finding, got:\n%s", out)
+	}
+}
+
+func TestDoctorCmd_GIVEN_dockerUnavailable_WHEN_run_THEN_orphanStacksWarnsNotFails(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
+		return nil, errors.New("docker: command not found")
+	})
+
+	out, err := runDoctorCmd(t)
+
+	if err != nil {
+		t.Fatalf("doctor: %v (expected a docker-unavailable orphan-stacks check to warn, not fail)", err)
+	}
+	if !strings.Contains(out, "⚠ docker compose ls unavailable — skipped") {
+		t.Fatalf("expected orphan-stacks docker-unavailable warning, got:\n%s", out)
+	}
+}
+
 func TestDoctorCmd_GIVEN_missingPostCreateHook_WHEN_run_THEN_hookCheckFails(t *testing.T) {
 	_, repoDir := newCreateFixtureRepo(t)
 	// hooks.post_create points at a script that is never written.

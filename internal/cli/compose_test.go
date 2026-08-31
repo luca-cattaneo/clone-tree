@@ -2,6 +2,9 @@ package cli
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -55,6 +58,28 @@ func TestRunningContainers_GIVEN_composeRunnerReturnsIds_WHEN_counted_THEN_lineC
 
 	if got := runningContainers("/some/dir", "repo-feature"); got != "2" {
 		t.Fatalf("got %q, want 2", got)
+	}
+}
+
+func TestComposeDown_GIVEN_composeFilePresent_WHEN_down_THEN_argsIncludeRemoveOrphans(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatalf("write compose.yaml: %v", err)
+	}
+
+	var gotArgs []string
+	stubComposeRunner(t, func(_, _ string, args ...string) ([]byte, error) {
+		gotArgs = args
+		return nil, nil
+	})
+
+	if err := composeDown(dir, "repo-feature"); err != nil {
+		t.Fatalf("composeDown: %v", err)
+	}
+
+	want := []string{"down", "-v", "--remove-orphans"}
+	if !reflect.DeepEqual(gotArgs, want) {
+		t.Fatalf("got args %v, want %v", gotArgs, want)
 	}
 }
 

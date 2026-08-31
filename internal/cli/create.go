@@ -101,7 +101,7 @@ var createCmd = &cobra.Command{
 		if err = gitwt.Create(root, target, branch); err != nil {
 			return err
 		}
-		rollback = append(rollback, func() { _ = gitwt.Remove(root, target, true) })
+		rollback = append(rollback, func() { _ = forceRemoveWorktree(root, target, true) })
 
 		if err = cfg.WriteEnv(target, name, slot); err != nil {
 			return err
