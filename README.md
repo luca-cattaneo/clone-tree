@@ -81,7 +81,7 @@ max_slots: 9
 ports:
   DB_PORT: {base: 3306, step: 10}         # slot 2 → 3326
 env:
-  SERVER_NAME: "app-{name}"               # templated: {name} {name_lower} {slot} {dns} {repo} {projects_dir} {dns} + port vars
+  SERVER_NAME: "app-{name}"               # templated: {name} {name_lower} {slot} {dns} {repo} {projects_dir} + port vars
 files:
   ide:       [.idea/]                     # same semantics as copy; own key since IDE dirs usually need per-worktree patching (post_create hook)
   copy:      [conf/local.php]             # relative to repo root, recursive; missing → warn+skip
