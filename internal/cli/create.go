@@ -163,5 +163,5 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	createCmd.Flags().StringVar(&createBranch, "branch", "", "branch name (defaults to <name>)")
+	createCmd.Flags().StringVarP(&createBranch, "branch", "b", "", "branch name (defaults to <name>)")
 }

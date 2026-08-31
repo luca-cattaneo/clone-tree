@@ -159,5 +159,5 @@ func init() {
 	// generated .env, which git worktree remove otherwise refuses to
 	// remove as "untracked content" — clone-tree worktrees are disposable
 	// by design. Pass --force=false to fall back to git's safe default.
-	removeCmd.Flags().BoolVar(&removeForce, "force", true, "force removal of the worktree")
+	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", true, "force removal of the worktree")
 }

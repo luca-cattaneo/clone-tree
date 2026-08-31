@@ -29,7 +29,7 @@ var configPath string
 var hostsPath = hosts.DefaultPath
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&configPath, "config", "", "path to config.yaml (overrides auto-discovery)")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to config.yaml (overrides auto-discovery)")
 	rootCmd.AddCommand(createCmd, createConfigCmd, removeCmd, listCmd, execCmd, startCmd, stopCmd, portsCmd, hostsCmd, doctorCmd)
 }
 
