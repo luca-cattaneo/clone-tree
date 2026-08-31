@@ -11,11 +11,17 @@ import (
 )
 
 // InstanceVars returns the templating vars available when materializing one
-// worktree instance: {name}, {slot}, {dns}, {repo}, {projects_dir}, plus one
-// entry per ports var holding its computed value for slot.
+// worktree instance: {name}, {name_lower}, {slot}, {dns}, {repo},
+// {projects_dir}, plus one entry per ports var holding its computed value
+// for slot. {name_lower} exists because some consumers (e.g. a
+// COMPOSE_PROJECT_NAME env: line) need a lowercased name — Docker Compose
+// project names must be lowercase — while {name} itself is left untouched
+// so it stays usable for things that must preserve the worktree's original
+// casing (a DNS pattern, a directory name).
 func (c *Config) InstanceVars(name string, slot int) map[string]string {
 	vars := BaseVars(c.RepoRoot)
 	vars["name"] = name
+	vars["name_lower"] = strings.ToLower(name)
 	vars["slot"] = strconv.Itoa(slot)
 	for portVar, value := range c.PortValues(slot) {
 		vars[portVar] = strconv.Itoa(value)

@@ -98,11 +98,19 @@ func composeDown(dir, project string) error {
 }
 
 // composeProjectName is the COMPOSE_PROJECT_NAME ct assigns a worktree's
-// stack: <repo>-<name>. Main is excluded from this scheme — it keeps
-// docker compose's own default project name (its directory basename,
-// i.e. repo itself), since main is never created/named by ct.
+// stack: <repo>-<name>, lowercased — Docker Compose requires project names
+// to be lowercase, and a worktree name is otherwise free-form (e.g.
+// "documentCache"). Must match how a consumer config's env: block computes
+// COMPOSE_PROJECT_NAME (via {name_lower}, see config.InstanceVars) so the
+// project docker compose actually uses (this override) and the one recorded
+// in the generated .env agree — a mismatch would leave `ct start`/`stop`
+// operating on a different compose project than `docker compose` run
+// directly in the worktree with its .env. Main is excluded from this
+// scheme — it keeps docker compose's own default project name (its
+// directory basename, i.e. repo itself), since main is never created/named
+// by ct.
 func composeProjectName(repo, name string) string {
-	return repo + "-" + name
+	return strings.ToLower(repo + "-" + name)
 }
 
 // runCompose resolves arg (a worktree name or registered slot, same

@@ -50,6 +50,37 @@ func TestRenderEnv_GIVEN_portsAndEnvAndSlot_WHEN_rendered_THEN_portsFirstThenTem
 	}
 }
 
+func TestInstanceVars_GIVEN_mixedCaseName_WHEN_built_THEN_nameLowerIsLowercased(t *testing.T) {
+	cfg := &config.Config{RepoRoot: "/home/dev/myrepo"}
+
+	vars := cfg.InstanceVars("documentCache", 1)
+
+	if vars["name"] != "documentCache" {
+		t.Fatalf("expected {name} to preserve original casing, got %q", vars["name"])
+	}
+	if vars["name_lower"] != "documentcache" {
+		t.Fatalf("expected {name_lower} lowercased, got %q", vars["name_lower"])
+	}
+}
+
+func TestRenderEnv_GIVEN_envValueReferencingNameLower_WHEN_rendered_THEN_lowercasedNameSubstituted(t *testing.T) {
+	cfg := &config.Config{
+		RepoRoot: "/home/dev/myrepo",
+		Env: map[string]string{
+			"COMPOSE_PROJECT_NAME": "myrepo-{name_lower}",
+		},
+	}
+
+	got := cfg.RenderEnv("documentCache", 1)
+
+	want := "COMPOSE_PROJECT_NAME=myrepo-documentcache\n" +
+		"CT_NAME=documentCache\n" +
+		"CT_SLOT=1\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func TestRenderEnv_GIVEN_envValueReferencingDNS_WHEN_rendered_THEN_dnsPatternExpandedFirst(t *testing.T) {
 	cfg := &config.Config{
 		RepoRoot:   "/home/dev/myrepo",

@@ -27,6 +27,13 @@ func TestComposeProjectName_GIVEN_repoAndName_WHEN_built_THEN_hyphenJoined(t *te
 	}
 }
 
+func TestComposeProjectName_GIVEN_mixedCaseRepoOrName_WHEN_built_THEN_lowercased(t *testing.T) {
+	got := composeProjectName("TagPay", "documentCache")
+	if want := "tagpay-documentcache"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func TestRunningContainers_GIVEN_composeRunnerErrors_WHEN_counted_THEN_dashPlaceholder(t *testing.T) {
 	orig := composeRunner
 	defer func() { composeRunner = orig }()

@@ -124,4 +124,9 @@ func TestHostsCmd_GIVEN_fixtureRepoWithRegisteredWorktree_WHEN_run_THEN_noError(
 	if err := hostsCmd.RunE(hostsCmd, []string{"nonexistent"}); err == nil {
 		t.Fatalf("expected error for unregistered worktree name")
 	}
+	// Parity with tagpay-worktree.sh's cmd_hosts: "[name|slot]" — a slot
+	// number must resolve to its registered worktree, same as a name.
+	if err := hostsCmd.RunE(hostsCmd, []string{"1"}); err != nil {
+		t.Fatalf("hosts by slot number: %v", err)
+	}
 }

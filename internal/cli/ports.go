@@ -40,7 +40,10 @@ var portsCmd = &cobra.Command{
 		vars := sortedPortVars(cfg.Ports)
 
 		if len(args) == 1 {
-			name := args[0]
+			name, err := resolveNameOrSlot(reg, args[0])
+			if err != nil {
+				return err
+			}
 			slot, ok := reg.Slot(name)
 			if !ok {
 				return fmt.Errorf("no worktree named %q", name)

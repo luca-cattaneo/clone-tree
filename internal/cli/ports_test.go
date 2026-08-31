@@ -109,4 +109,9 @@ func TestPortsCmd_GIVEN_fixtureRepoWithPortsAndRegisteredWorktree_WHEN_runWithou
 	if err := portsCmd.RunE(portsCmd, []string{"nonexistent"}); err == nil {
 		t.Fatalf("expected error for unregistered worktree name")
 	}
+	// Parity with tagpay-worktree.sh's cmd_ports: "<name|slot>" — a slot
+	// number must resolve to its registered worktree, same as a name.
+	if err := portsCmd.RunE(portsCmd, []string{"1"}); err != nil {
+		t.Fatalf("ports by slot number: %v", err)
+	}
 }

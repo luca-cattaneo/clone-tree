@@ -41,7 +41,10 @@ var hostsCmd = &cobra.Command{
 		headers := []string{"Slot", "Name", "DNS", "In /etc/hosts"}
 
 		if len(args) == 1 {
-			name := args[0]
+			name, err := resolveNameOrSlot(reg, args[0])
+			if err != nil {
+				return err
+			}
 			slot, ok := reg.Slot(name)
 			if !ok {
 				return fmt.Errorf("no worktree named %q", name)
