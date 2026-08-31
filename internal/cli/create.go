@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,15 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		cfg, err := config.Load(root, configPath)
+		cfg, err := config.LoadExisting(root, configPath)
+		if errors.Is(err, config.ErrNoConfig) {
+			// No config yet: scaffold it via the same entry point
+			// `ct create-config` uses, and stop here — a freshly
+			// scaffolded config needs human review before ct acts on
+			// it, so create never proceeds to provisioning in the
+			// same run.
+			return config.ScaffoldOrError(root)
+		}
 		if err != nil {
 			return err
 		}

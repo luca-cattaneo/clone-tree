@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/luca-cattaneo/clone-tree/internal/config"
 	"github.com/luca-cattaneo/clone-tree/internal/hosts"
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
@@ -64,6 +66,33 @@ func chdir(t *testing.T, dir string) {
 		t.Fatalf("Chdir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(orig) })
+}
+
+func TestCreate_GIVEN_noConfigInRepo_WHEN_created_THEN_scaffoldsAndStopsWithoutProvisioning(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	err := createCmd.RunE(createCmd, []string{"feature"})
+
+	var scaffolded *config.ScaffoldedError
+	if !errors.As(err, &scaffolded) {
+		t.Fatalf("got err %v, want *config.ScaffoldedError", err)
+	}
+	wantPath := filepath.Join(repoDir, ".clone-tree", "config.yaml")
+	if scaffolded.Path != wantPath {
+		t.Fatalf("got path %q, want %q", scaffolded.Path, wantPath)
+	}
+	if _, statErr := os.Stat(wantPath); statErr != nil {
+		t.Fatalf("expected scaffold to write config.yaml: %v", statErr)
+	}
+
+	worktreesDir := filepath.Join(filepath.Dir(repoDir), "repo-worktrees")
+	if _, statErr := os.Stat(filepath.Join(worktreesDir, "feature")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no worktree to be provisioned when scaffolding stops the command, stat err: %v", statErr)
+	}
 }
 
 func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollbackRemovesCloneCowDst(t *testing.T) {

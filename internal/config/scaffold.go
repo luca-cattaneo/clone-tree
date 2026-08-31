@@ -52,6 +52,20 @@ func Scaffold(root string) (string, error) {
 	return path, nil
 }
 
+// ScaffoldOrError auto-scaffolds root's .clone-tree/config.yaml and wraps
+// the written path in a *ScaffoldedError. This is the one shared entry
+// point every ErrNoConfig-handling command calls: `ct create` (stops the
+// pipeline, surfacing the notice as a failing command) and
+// `ct create-config` (the scaffold IS the command, so it unwraps and prints
+// the notice on success instead).
+func ScaffoldOrError(root string) error {
+	written, err := Scaffold(root)
+	if err != nil {
+		return err
+	}
+	return &ScaffoldedError{Path: written}
+}
+
 // renderScaffoldYAML builds the generated config.yaml text: a review-notice
 // header, the fixed M2 defaults, discovered ports (base: null + a "set me"
 // comment for anything unresolved, plus one "cannot be replicated" comment

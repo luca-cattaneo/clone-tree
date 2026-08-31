@@ -57,18 +57,18 @@ func readGeneratedConfig(t *testing.T, repo string) string {
 }
 
 // scaffoldAndParse scaffolds repo, then parses+validates the generated
-// config.yaml the same way Load does for an explicit --config path —
-// Scaffold itself now stops at "written to disk", so tests that need the
-// parsed Config go through this instead.
+// config.yaml via LoadExisting against the written path (an explicit
+// --config-style override) — Scaffold itself now stops at "written to
+// disk", so tests that need the parsed Config go through this instead.
 func scaffoldAndParse(t *testing.T, repo string) *config.Config {
 	t.Helper()
 	path, err := config.Scaffold(repo)
 	if err != nil {
 		t.Fatalf("Scaffold: %v", err)
 	}
-	cfg, err := config.Load(repo, path)
+	cfg, err := config.LoadExisting(repo, path)
 	if err != nil {
-		t.Fatalf("Load generated config: %v", err)
+		t.Fatalf("LoadExisting generated config: %v", err)
 	}
 	return cfg
 }
@@ -760,9 +760,9 @@ services:
 		t.Fatalf("Scaffold: %v", err)
 	}
 
-	_, err = config.Load(repo, path)
+	_, err = config.LoadExisting(repo, path)
 	if err == nil {
-		t.Fatalf("expected Load to error on an unresolved var (base: null written, but config now invalid)")
+		t.Fatalf("expected LoadExisting to error on an unresolved var (base: null written, but config now invalid)")
 	}
 	if !strings.Contains(err.Error(), "set base for PROXY_HTTP_PORT in .clone-tree/config.yaml") {
 		t.Fatalf("got %q, want it to name the var and the file to fix", err.Error())
@@ -875,13 +875,10 @@ func TestScaffold_GIVEN_noComposeFile_WHEN_scaffolded_THEN_urlsKeyIsActiveEmptyM
 	}
 }
 
-func TestLoad_GIVEN_noConfigFileAndNoOverride_WHEN_loaded_THEN_autoScaffoldsAndReturnsScaffoldedError(t *testing.T) {
+func TestScaffoldOrError_GIVEN_repo_WHEN_called_THEN_scaffoldsAndReturnsScaffoldedError(t *testing.T) {
 	repo := newFixtureRepo(t)
 
-	cfg, err := config.Load(repo, "")
-	if cfg != nil {
-		t.Fatalf("got cfg %#v, want nil (Load stops after scaffolding)", cfg)
-	}
+	err := config.ScaffoldOrError(repo)
 
 	var scaffolded *config.ScaffoldedError
 	if !errors.As(err, &scaffolded) {

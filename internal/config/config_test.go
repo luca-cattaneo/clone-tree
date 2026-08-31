@@ -23,7 +23,7 @@ func writeConfig(t *testing.T, root, body string) {
 	}
 }
 
-func TestLoad_GIVEN_validConfig_WHEN_loaded_THEN_fieldsParsedAndWorktreesDirExpanded(t *testing.T) {
+func TestLoadExisting_GIVEN_validConfig_WHEN_loaded_THEN_fieldsParsedAndWorktreesDirExpanded(t *testing.T) {
 	root := t.TempDir()
 	writeConfig(t, root, `
 version: 1
@@ -36,9 +36,9 @@ env:
   PHP_SERVER_NAME: "app-{name}"
 `)
 
-	cfg, err := config.Load(root, "")
+	cfg, err := config.LoadExisting(root, "")
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("LoadExisting: %v", err)
 	}
 
 	if cfg.Version != 1 {
@@ -59,21 +59,21 @@ env:
 	}
 }
 
-func TestLoad_GIVEN_absoluteWorktreesDir_WHEN_loaded_THEN_keptAsIs(t *testing.T) {
+func TestLoadExisting_GIVEN_absoluteWorktreesDir_WHEN_loaded_THEN_keptAsIs(t *testing.T) {
 	root := t.TempDir()
 	abs := t.TempDir()
 	writeConfig(t, root, "version: 1\nworktrees_dir: "+abs+"\nmax_slots: 1\n")
 
-	cfg, err := config.Load(root, "")
+	cfg, err := config.LoadExisting(root, "")
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("LoadExisting: %v", err)
 	}
 	if cfg.WorktreesDir != filepath.Clean(abs) {
 		t.Fatalf("got %q, want %q", cfg.WorktreesDir, abs)
 	}
 }
 
-func TestLoad_GIVEN_configOverridePath_WHEN_loaded_THEN_usesThatFileInsteadOfDiscovery(t *testing.T) {
+func TestLoadExisting_GIVEN_configOverridePath_WHEN_loaded_THEN_usesThatFileInsteadOfDiscovery(t *testing.T) {
 	root := t.TempDir()
 	overrideDir := t.TempDir()
 	overridePath := filepath.Join(overrideDir, "custom-config.yaml")
@@ -81,19 +81,19 @@ func TestLoad_GIVEN_configOverridePath_WHEN_loaded_THEN_usesThatFileInsteadOfDis
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	cfg, err := config.Load(root, overridePath)
+	cfg, err := config.LoadExisting(root, overridePath)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("LoadExisting: %v", err)
 	}
 	if cfg.MaxSlots != 3 {
 		t.Fatalf("got max_slots %d, want 3", cfg.MaxSlots)
 	}
 }
 
-func TestLoad_GIVEN_configOverridePathMissing_WHEN_loaded_THEN_errors(t *testing.T) {
+func TestLoadExisting_GIVEN_configOverridePathMissing_WHEN_loaded_THEN_errors(t *testing.T) {
 	root := t.TempDir()
 
-	if _, err := config.Load(root, filepath.Join(root, "nope.yaml")); err == nil {
+	if _, err := config.LoadExisting(root, filepath.Join(root, "nope.yaml")); err == nil {
 		t.Fatalf("expected error for missing --config path")
 	}
 }
@@ -184,7 +184,7 @@ func TestExpand_GIVEN_unknownPlaceholder_WHEN_expanded_THEN_leftUntouched(t *tes
 	}
 }
 
-func TestLoad_GIVEN_filesIDEConfigured_WHEN_loaded_THEN_parsedSeparatelyFromCopy(t *testing.T) {
+func TestLoadExisting_GIVEN_filesIDEConfigured_WHEN_loaded_THEN_parsedSeparatelyFromCopy(t *testing.T) {
 	root := t.TempDir()
 	writeConfig(t, root, `
 version: 1
@@ -195,9 +195,9 @@ files:
   copy: [conf/local.php]
 `)
 
-	cfg, err := config.Load(root, "")
+	cfg, err := config.LoadExisting(root, "")
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("LoadExisting: %v", err)
 	}
 
 	if len(cfg.Files.IDE) != 1 || cfg.Files.IDE[0] != ".idea/" {
@@ -220,19 +220,6 @@ func TestLoadExisting_GIVEN_noConfigFileAndNoOverride_WHEN_loaded_THEN_errNoConf
 	}
 	if _, statErr := os.Stat(filepath.Join(root, ".clone-tree", "config.yaml")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected LoadExisting to never scaffold, but .clone-tree/config.yaml exists")
-	}
-}
-
-func TestLoadExisting_GIVEN_validConfig_WHEN_loaded_THEN_sameResultAsLoad(t *testing.T) {
-	root := t.TempDir()
-	writeConfig(t, root, "version: 1\nworktrees_dir: ../{repo}-worktrees\nmax_slots: 1\n")
-
-	cfg, err := config.LoadExisting(root, "")
-	if err != nil {
-		t.Fatalf("LoadExisting: %v", err)
-	}
-	if cfg.MaxSlots != 1 {
-		t.Fatalf("got max_slots %d, want 1", cfg.MaxSlots)
 	}
 }
 

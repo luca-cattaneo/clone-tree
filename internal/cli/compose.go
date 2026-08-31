@@ -133,7 +133,7 @@ func runCompose(arg string, args ...string) error {
 		return fmt.Errorf("start/stop require a .clone-tree config")
 	}
 
-	cfg, err := config.Load(root, configPath)
+	cfg, err := config.LoadExisting(root, configPath)
 	if err != nil {
 		return err
 	}
@@ -162,14 +162,10 @@ func runCompose(arg string, args ...string) error {
 
 // configFileExists reports whether the config ct would load for root
 // already exists on disk (the --config override path, or the default
-// <root>/.clone-tree/config.yaml), without triggering config.Load's
-// auto-scaffold side effect — start/stop must refuse cleanly in bare mode
-// rather than generate a config file as a side effect of a start/stop call.
+// <root>/.clone-tree/config.yaml) — start/stop must refuse cleanly in bare
+// mode rather than auto-scaffold a config file as a side effect of a
+// start/stop call.
 func configFileExists(root string) bool {
-	path := configPath
-	if path == "" {
-		path = filepath.Join(root, ".clone-tree", "config.yaml")
-	}
-	_, err := os.Stat(path)
+	_, err := os.Stat(config.ResolvePath(root, configPath))
 	return err == nil
 }

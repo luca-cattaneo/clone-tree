@@ -1,6 +1,7 @@
 // Package config loads, validates, and templates .clone-tree/config.yaml.
-// When no config exists (and no --config override was given), it
-// auto-scaffolds one by scanning the repo (see scaffold.go).
+// LoadExisting never scaffolds; a caller that wants to auto-scaffold a
+// missing config by scanning the repo calls ScaffoldOrError on
+// ErrNoConfig (see scaffold.go).
 package config
 
 import (
@@ -122,44 +123,34 @@ func (e *ScaffoldedError) Error() string {
 }
 
 // ErrNoConfig is returned by LoadExisting when neither overridePath nor
-// <root>/.clone-tree/config.yaml exists. Only Load (the `ct create` path)
-// reacts to it by auto-scaffolding; every other command must surface it as
-// a clean error (or, for `ct list`, fall back to a bare-mode Config) rather
-// than generate a config.yaml as a side effect of a read-only command.
+// <root>/.clone-tree/config.yaml exists. Only `ct create` and
+// `ct create-config` react to it by auto-scaffolding (via ScaffoldOrError,
+// see scaffold.go); every other command must surface it as a clean error
+// (or, for `ct list`, fall back to a bare-mode Config) rather than generate
+// a config.yaml as a side effect of a read-only command.
 var ErrNoConfig = errors.New("config: no .clone-tree/config.yaml — run `ct create` to scaffold one, or pass --config")
 
-// Load resolves the config for the repo rooted at root: overridePath first
-// (the --config escape hatch), then <root>/.clone-tree/config.yaml, then
-// auto-scaffold when neither exists. On auto-scaffold, Load writes the new
-// config and returns a *ScaffoldedError instead of a Config — a freshly
-// scaffolded config is not meant to be acted on until a human has reviewed
-// it. worktrees_dir is expanded and resolved to an absolute path before
-// return; env/dns_pattern stay as raw templates, expanded per-instance at
-// create time (see env.go). Only `ct create` calls Load; every other
-// command calls LoadExisting, which never scaffolds.
-func Load(root, overridePath string) (*Config, error) {
-	cfg, err := LoadExisting(root, overridePath)
-	if errors.Is(err, ErrNoConfig) {
-		written, scaffoldErr := Scaffold(root)
-		if scaffoldErr != nil {
-			return nil, scaffoldErr
-		}
-		return nil, &ScaffoldedError{Path: written}
+// ResolvePath returns the config.yaml path LoadExisting resolves for root
+// and overridePath, without reading or parsing it: overridePath verbatim
+// when set (the --config escape hatch), else
+// <root>/.clone-tree/config.yaml.
+func ResolvePath(root, overridePath string) string {
+	if overridePath != "" {
+		return overridePath
 	}
-	return cfg, err
+	return filepath.Join(root, ".clone-tree", "config.yaml")
 }
 
-// LoadExisting resolves the config for the repo rooted at root exactly like
-// Load, except it never auto-scaffolds: a missing config (no override, no
+// LoadExisting resolves the config for the repo rooted at root: overridePath
+// first (the --config escape hatch), then <root>/.clone-tree/config.yaml.
+// It never auto-scaffolds: a missing config (no override, no
 // <root>/.clone-tree/config.yaml) returns ErrNoConfig instead of generating
-// one. Every command besides `ct create` must use this, so a read-only
-// invocation on a config-less repo never writes .clone-tree/config.yaml as
-// a side effect.
+// one. worktrees_dir is expanded and resolved to an absolute path before
+// return; env/dns_pattern stay as raw templates, expanded per-instance at
+// create time (see env.go). Callers that want to auto-scaffold on
+// ErrNoConfig call ScaffoldOrError (see scaffold.go) themselves.
 func LoadExisting(root, overridePath string) (*Config, error) {
-	path := overridePath
-	if path == "" {
-		path = filepath.Join(root, ".clone-tree", "config.yaml")
-	}
+	path := ResolvePath(root, overridePath)
 
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) && overridePath == "" {
