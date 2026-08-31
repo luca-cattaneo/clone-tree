@@ -24,9 +24,23 @@ export PATH="$HOME/go/bin:$PATH"
 | `ct exec <name> -- <cmd>` | run `<cmd>` in the worktree dir, exit code propagated. |
 | `ct start <name\|slot>` / `ct stop <name\|slot>` | `docker compose up -d` / `down` in the worktree dir, `COMPOSE_PROJECT_NAME=<repo>-<name>`. Requires a `.clone-tree` config. |
 | `ct ports [name|slot]` | no arg: table of every registered worktree (+ main at slot 0) × every configured port var. With `name` or slot: `Var`/`Value` table for that worktree. |
-| `ct hosts [name|slot]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓`/`-`). |
+| `ct hosts [name|slot]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓` clone-tree-owned, `✓ (unmanaged)` present but not ct-managed, `-` absent). With `name`/slot and a non-empty `urls:`, also prints a Service/URL table underneath (see Config below). |
 
 Global flag: `--config <path>` (skips lookup + scaffold).
+
+Only `ct create` ever auto-scaffolds `.clone-tree/config.yaml`. Every other command reads an
+existing config only: `ct list` still works with no config at all (bare mode — plain worktree
+listing, no ports/urls columns); `ct ports`/`ct hosts`/`ct start`/`ct stop`/`ct remove`/`ct exec`
+error cleanly instead ("no .clone-tree/config.yaml — run `ct create` to scaffold one").
+
+## Shell completion
+
+```sh
+echo 'source <(ct completion zsh)' >> ~/.zshrc
+```
+
+`remove`, `start`, `stop`, `exec`, `ports`, and `hosts` complete their `<name|slot>` argument
+from the slot registry (silently no completions if there's no config yet, or any other error).
 
 ## Where things go
 
@@ -74,12 +88,21 @@ bumped themselves, they're not entries.
 comment underneath for a human to uncomment into a real entry. Paths collapse to the
 topmost gitignored dir (`data/`, not `data/docker/x.bin`).
 
+`urls:` is likewise always the live, empty `{}` — one commented `label: "template"`
+suggestion per host-exposed `ports:` var (a literal, non-parameterized binding never gets
+one, same as it never gets a `ports:` entry): label is the owning compose service name
+(deduped `service`, `service-2`, … when one service exposes more than one port var), scheme
+is `https` when the container port is `443`/`8443` else `http`, host is `{dns}` when
+`dns_pattern` is non-empty else `localhost`.
+
 ```yaml
 version: 1
 worktrees_dir: ../myrepo-worktrees             # {repo} (= repo dir name) also works
 max_slots: 9
 ports:
   DB_PORT: {base: 3306, step: 10}         # slot 2 → 3326
+urls:
+  Web Client: "https://{dns}:{PROXY_HTTPS_PORT}/"   # rendered by `ct hosts <name>` as a Service/URL table
 env:
   SERVER_NAME: "app-{name}"               # templated: {name} {name_lower} {slot} {dns} {repo} {projects_dir} + port vars
 files:
@@ -115,9 +138,13 @@ is torn down.
 
 When `dns_pattern` is non-empty, `ct create` appends a `127.0.0.1 <dns>  # clone-tree:<name>`
 line to `/etc/hosts` (writing to a root-owned file falls back to `sudo tee`), and `ct remove`
-drops it. `ct hosts [name]` lists every registered worktree's DNS and whether it's currently
-present. Only clone-tree-owned lines (marked by the trailing comment) are ever touched —
-every other line in the file is preserved verbatim and in place.
+drops it. If `dns` is already bound by an *unmanaged* line (no `# clone-tree:` marker — a
+hand-added entry, or a leftover from before the worktree was ct-managed), `ct create` takes
+ownership of that line in place instead of appending a duplicate binding. `ct hosts [name]`
+lists every registered worktree's DNS and whether it's currently present: `✓` when the line
+is clone-tree-owned, `✓ (unmanaged)` when `dns` resolves via some other line, `-` when it's
+absent entirely. Only clone-tree-owned lines (marked by the trailing comment) are ever
+written to — every other line in the file is preserved verbatim and in place.
 
 ## Rollback
 

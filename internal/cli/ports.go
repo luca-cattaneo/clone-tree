@@ -13,9 +13,10 @@ import (
 )
 
 var portsCmd = &cobra.Command{
-	Use:   "ports [name]",
-	Short: "Show configured ports",
-	Args:  cobra.MaximumNArgs(1),
+	Use:               "ports [name]",
+	Short:             "Show configured ports",
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeWorktreeNames,
 	RunE: func(_ *cobra.Command, args []string) error {
 		dir, err := cwd()
 		if err != nil {
@@ -27,7 +28,7 @@ var portsCmd = &cobra.Command{
 			return err
 		}
 
-		cfg, err := config.Load(root, configPath)
+		cfg, err := config.LoadExisting(root, configPath)
 		if err != nil {
 			return err
 		}

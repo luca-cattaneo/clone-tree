@@ -29,8 +29,13 @@ type Entry struct {
 }
 
 // Add writes "127.0.0.1 <dns>  # clone-tree:<name>" into hostsFile,
-// replacing any existing line owned by name in place, or appending it
-// otherwise. All other lines and their order are preserved.
+// replacing any existing line owned by name in place. Failing that, it
+// takes ownership of an existing *unmanaged* line already bound to the same
+// dns (no "# clone-tree:" marker at all — e.g. a hand-added entry, or a
+// leftover from before this worktree was ct-managed), replacing it in place
+// rather than appending a second, now-duplicate, binding for dns. Only when
+// neither is found is the line appended. All other lines and their order
+// are preserved.
 func Add(hostsFile, name, dns string) error {
 	lines, err := readLines(hostsFile)
 	if err != nil {
@@ -41,6 +46,12 @@ func Add(hostsFile, name, dns string) error {
 	line := entryLine(name, dns)
 	for i, l := range lines {
 		if strings.HasSuffix(l, m) {
+			lines[i] = line
+			return writeLines(hostsFile, lines)
+		}
+	}
+	for i, l := range lines {
+		if !strings.Contains(l, commentPrefix) && lineHasDNS(l, dns) {
 			lines[i] = line
 			return writeLines(hostsFile, lines)
 		}
@@ -80,6 +91,41 @@ func Has(hostsFile, name string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// HasDNS reports whether hostsFile has ANY line — clone-tree-owned or not —
+// binding dns as a hostname. Used to tell an "unmanaged" entry (dns already
+// resolves, but not via a "# clone-tree:<name>" marker) apart from a truly
+// absent one; `ct hosts` surfaces the distinction, and Add uses it to take
+// ownership of an unmanaged line instead of duplicating it.
+func HasDNS(hostsFile, dns string) (bool, error) {
+	lines, err := readLines(hostsFile)
+	if err != nil {
+		return false, err
+	}
+	for _, l := range lines {
+		if lineHasDNS(l, dns) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// lineHasDNS reports whether line's host-fields (everything after the IP,
+// before any trailing "#" comment) include dns — a hosts line can list
+// multiple hostnames after the IP, e.g. "127.0.0.1 a b c".
+func lineHasDNS(line, dns string) bool {
+	hostPart, _, _ := strings.Cut(line, "#")
+	fields := strings.Fields(hostPart)
+	if len(fields) < 2 {
+		return false
+	}
+	for _, f := range fields[1:] {
+		if f == dns {
+			return true
+		}
+	}
+	return false
 }
 
 // List returns every clone-tree-owned entry in hostsFile, in file order.

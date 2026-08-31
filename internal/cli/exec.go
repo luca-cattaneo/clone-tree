@@ -9,9 +9,10 @@ import (
 )
 
 var execCmd = &cobra.Command{
-	Use:   "exec <name> -- <cmd...>",
-	Short: "Run a command in a worktree directory",
-	Args:  cobra.MinimumNArgs(2),
+	Use:               "exec <name> -- <cmd...>",
+	Short:             "Run a command in a worktree directory",
+	Args:              cobra.MinimumNArgs(2),
+	ValidArgsFunction: completeWorktreeNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("usage: ct exec <name> -- <cmd...>")

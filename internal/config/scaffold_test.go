@@ -774,6 +774,107 @@ services:
 	}
 }
 
+func TestScaffold_GIVEN_httpsContainerPort_WHEN_scaffolded_THEN_urlSuggestionUsesHttpsScheme(t *testing.T) {
+	repo := newFixtureRepo(t)
+	writeFile(t, filepath.Join(repo, "docker-compose.yml"), `
+services:
+  proxy:
+    ports:
+      - "${PROXY_HTTPS_PORT:-10443}:443"
+`)
+
+	if _, err := config.Scaffold(repo); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+
+	data := readGeneratedConfig(t, repo)
+	want := `#   proxy: "https://localhost:{PROXY_HTTPS_PORT}/"`
+	if !strings.Contains(data, want) {
+		t.Fatalf("expected %q in generated config, got:\n%s", want, data)
+	}
+}
+
+func TestScaffold_GIVEN_plainContainerPort_WHEN_scaffolded_THEN_urlSuggestionUsesHttpScheme(t *testing.T) {
+	repo := newFixtureRepo(t)
+	writeFile(t, filepath.Join(repo, "docker-compose.yml"), `
+services:
+  web:
+    ports:
+      - "${PROXY_HTTP_PORT:-8080}:80"
+`)
+
+	if _, err := config.Scaffold(repo); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+
+	data := readGeneratedConfig(t, repo)
+	want := `#   web: "http://localhost:{PROXY_HTTP_PORT}/"`
+	if !strings.Contains(data, want) {
+		t.Fatalf("expected %q in generated config, got:\n%s", want, data)
+	}
+}
+
+func TestScaffold_GIVEN_serviceExposingTwoPortVars_WHEN_scaffolded_THEN_secondUrlLabelGetsDashTwoSuffix(t *testing.T) {
+	repo := newFixtureRepo(t)
+	writeFile(t, filepath.Join(repo, "docker-compose.yml"), `
+services:
+  proxy:
+    ports:
+      - "${PROXY_HTTP_PORT:-8080}:80"
+      - "${PROXY_HTTPS_PORT:-8443}:443"
+`)
+
+	if _, err := config.Scaffold(repo); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+
+	data := readGeneratedConfig(t, repo)
+	for _, want := range []string{
+		`#   proxy: "http://localhost:{PROXY_HTTP_PORT}/"`,
+		`#   proxy-2: "https://localhost:{PROXY_HTTPS_PORT}/"`,
+	} {
+		if !strings.Contains(data, want) {
+			t.Fatalf("expected %q in generated config, got:\n%s", want, data)
+		}
+	}
+}
+
+func TestScaffold_GIVEN_literalPortBinding_WHEN_scaffolded_THEN_noUrlSuggestion(t *testing.T) {
+	repo := newFixtureRepo(t)
+	writeFile(t, filepath.Join(repo, "docker-compose.yml"), `
+services:
+  qdrant:
+    ports:
+      - "6333:6333"
+`)
+
+	if _, err := config.Scaffold(repo); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+
+	data := readGeneratedConfig(t, repo)
+	if strings.Contains(data, "qdrant:") && strings.Contains(data, "{6333}") {
+		t.Fatalf("did not expect a url suggestion for a literal (non-parameterized) binding, got:\n%s", data)
+	}
+	if !strings.Contains(data, "urls: {}\n") {
+		t.Fatalf("expected the live 'urls: {}' value even with no suggestions, got:\n%s", data)
+	}
+}
+
+func TestScaffold_GIVEN_noComposeFile_WHEN_scaffolded_THEN_urlsKeyIsActiveEmptyMap(t *testing.T) {
+	repo := newFixtureRepo(t)
+
+	cfg := scaffoldAndParse(t, repo)
+	if len(cfg.Urls) != 0 {
+		t.Fatalf("expected urls: {} (no active entries), got %#v", cfg.Urls)
+	}
+
+	data := readGeneratedConfig(t, repo)
+	if !strings.Contains(data, "urls: {}\n") {
+		t.Fatalf("expected literal 'urls: {}' as the active value, got:\n%s", data)
+	}
+}
+
 func TestLoad_GIVEN_noConfigFileAndNoOverride_WHEN_loaded_THEN_autoScaffoldsAndReturnsScaffoldedError(t *testing.T) {
 	repo := newFixtureRepo(t)
 

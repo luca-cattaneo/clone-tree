@@ -140,6 +140,56 @@ func TestList_GIVEN_mixOfOwnedAndForeignLines_WHEN_listed_THEN_onlyOwnedEntriesR
 	}
 }
 
+func TestHasDNS_GIVEN_unmanagedLineForDNS_WHEN_checked_THEN_true(t *testing.T) {
+	path := writeTempHosts(t, "127.0.0.1 local-feature.dev.test\n")
+
+	present, err := hosts.HasDNS(path, "local-feature.dev.test")
+	if err != nil {
+		t.Fatalf("HasDNS: %v", err)
+	}
+	if !present {
+		t.Fatalf("expected local-feature.dev.test to be reported present (unmanaged line)")
+	}
+}
+
+func TestHasDNS_GIVEN_ownedLineForDNS_WHEN_checked_THEN_true(t *testing.T) {
+	path := writeTempHosts(t, "127.0.0.1 local-feature.dev.test  # clone-tree:feature\n")
+
+	present, err := hosts.HasDNS(path, "local-feature.dev.test")
+	if err != nil {
+		t.Fatalf("HasDNS: %v", err)
+	}
+	if !present {
+		t.Fatalf("expected local-feature.dev.test to be reported present (owned line)")
+	}
+}
+
+func TestHasDNS_GIVEN_noMatchingLine_WHEN_checked_THEN_false(t *testing.T) {
+	path := writeTempHosts(t, "127.0.0.1 localhost\n")
+
+	present, err := hosts.HasDNS(path, "local-feature.dev.test")
+	if err != nil {
+		t.Fatalf("HasDNS: %v", err)
+	}
+	if present {
+		t.Fatalf("expected local-feature.dev.test to be reported absent")
+	}
+}
+
+func TestAdd_GIVEN_unmanagedLineForSameDNS_WHEN_added_THEN_replacedInPlaceNotDuplicated(t *testing.T) {
+	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 local-feature-x.dev.tagpay.fr\n::1 localhost\n")
+
+	if err := hosts.Add(path, "feature-x", "local-feature-x.dev.tagpay.fr"); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	got := readFile(t, path)
+	want := "127.0.0.1 localhost\n127.0.0.1 local-feature-x.dev.tagpay.fr  # clone-tree:feature-x\n::1 localhost\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func TestAdd_GIVEN_missingFile_WHEN_added_THEN_fileCreatedWithEntry(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "hosts")
 

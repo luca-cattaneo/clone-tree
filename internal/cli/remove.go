@@ -18,9 +18,10 @@ import (
 var removeForce bool
 
 var removeCmd = &cobra.Command{
-	Use:   "remove <name|slot>",
-	Short: "Remove a git worktree",
-	Args:  cobra.ExactArgs(1),
+	Use:               "remove <name|slot>",
+	Short:             "Remove a git worktree",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeWorktreeNames,
 	RunE: func(_ *cobra.Command, args []string) error {
 		arg := args[0]
 
@@ -34,7 +35,7 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
-		cfg, err := config.Load(root, configPath)
+		cfg, err := config.LoadExisting(root, configPath)
 		if err != nil {
 			return err
 		}

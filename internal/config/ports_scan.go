@@ -23,6 +23,12 @@ type scaffoldPort struct {
 	Base    *int
 	Step    int
 	Comment []string
+	// ContainerPort and Service are the resolving rawBinding's container
+	// port and owning compose service, carried through purely for the
+	// scaffold's urls: autodetect (see renderURLs in scaffold.go): Service
+	// becomes the url label, ContainerPort decides http vs https.
+	ContainerPort int
+	Service       string
 }
 
 var (
@@ -475,13 +481,13 @@ func resolveOne(rb rawBinding, dotenv map[string]string) scaffoldPort {
 	if !rb.hasDefault {
 		if v, ok := dotenvInt(dotenv, rb.varName); ok {
 			base, step := baseStep(v)
-			return scaffoldPort{Name: rb.varName, Base: &base, Step: step}
+			return scaffoldPort{Name: rb.varName, Base: &base, Step: step, ContainerPort: rb.containerPort, Service: rb.svcName}
 		}
 		// Nothing tells us what this port actually is; step is uniform
 		// (10) regardless, so there is nothing left to derive from the
 		// container port here.
 		comment := fmt.Sprintf("# set me: ${%s} has no value in .env", rb.varName)
-		return scaffoldPort{Name: rb.varName, Step: 10, Comment: []string{comment}}
+		return scaffoldPort{Name: rb.varName, Step: 10, Comment: []string{comment}, ContainerPort: rb.containerPort, Service: rb.svcName}
 	}
 
 	value := rb.literal
@@ -489,7 +495,7 @@ func resolveOne(rb rawBinding, dotenv map[string]string) scaffoldPort {
 		value = v
 	}
 	base, step := baseStep(value)
-	return scaffoldPort{Name: rb.varName, Base: &base, Step: step}
+	return scaffoldPort{Name: rb.varName, Base: &base, Step: step, ContainerPort: rb.containerPort, Service: rb.svcName}
 }
 
 // baseStep is the base/step rule: a port already >= 1024 keeps its value

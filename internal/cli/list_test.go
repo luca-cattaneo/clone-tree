@@ -1,11 +1,28 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/luca-cattaneo/clone-tree/internal/gitwt"
 )
+
+func TestListCmd_GIVEN_noConfigInRepo_WHEN_run_THEN_bareModeNoErrorNoScaffold(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	if err := listCmd.RunE(listCmd, nil); err != nil {
+		t.Fatalf("list in bare mode: %v", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".clone-tree")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected list to never scaffold .clone-tree/, stat err: %v", statErr)
+	}
+}
 
 func TestListRows_GIVEN_mainAndRegisteredWorktrees_WHEN_converted_THEN_mainIsSlotZeroThenAscendingBySlot(t *testing.T) {
 	worktrees := []gitwt.Worktree{

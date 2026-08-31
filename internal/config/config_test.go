@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,6 +205,34 @@ files:
 	}
 	if len(cfg.Files.Copy) != 1 || cfg.Files.Copy[0] != "conf/local.php" {
 		t.Fatalf("got files.copy %#v, want [conf/local.php]", cfg.Files.Copy)
+	}
+}
+
+func TestLoadExisting_GIVEN_noConfigFileAndNoOverride_WHEN_loaded_THEN_errNoConfigWithoutScaffolding(t *testing.T) {
+	root := t.TempDir()
+
+	cfg, err := config.LoadExisting(root, "")
+	if cfg != nil {
+		t.Fatalf("got cfg %#v, want nil", cfg)
+	}
+	if !errors.Is(err, config.ErrNoConfig) {
+		t.Fatalf("got err %v, want config.ErrNoConfig", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, ".clone-tree", "config.yaml")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected LoadExisting to never scaffold, but .clone-tree/config.yaml exists")
+	}
+}
+
+func TestLoadExisting_GIVEN_validConfig_WHEN_loaded_THEN_sameResultAsLoad(t *testing.T) {
+	root := t.TempDir()
+	writeConfig(t, root, "version: 1\nworktrees_dir: ../{repo}-worktrees\nmax_slots: 1\n")
+
+	cfg, err := config.LoadExisting(root, "")
+	if err != nil {
+		t.Fatalf("LoadExisting: %v", err)
+	}
+	if cfg.MaxSlots != 1 {
+		t.Fatalf("got max_slots %d, want 1", cfg.MaxSlots)
 	}
 }
 

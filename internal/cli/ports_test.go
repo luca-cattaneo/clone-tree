@@ -62,6 +62,21 @@ func TestPortVarValueRows_GIVEN_slot_WHEN_built_THEN_varValuePairs(t *testing.T)
 	}
 }
 
+func TestPortsCmd_GIVEN_noConfigInRepo_WHEN_run_THEN_errorsWithoutScaffolding(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	if err := portsCmd.RunE(portsCmd, nil); err == nil {
+		t.Fatalf("expected an error when no .clone-tree config exists")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".clone-tree")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected ports to never scaffold .clone-tree/, stat err: %v", statErr)
+	}
+}
+
 func TestPortsCmd_GIVEN_fixtureRepoWithPortsAndRegisteredWorktree_WHEN_runWithoutArgs_THEN_noError(t *testing.T) {
 	_, repoDir := newCreateFixtureRepo(t)
 

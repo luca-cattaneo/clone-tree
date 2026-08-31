@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,8 +29,15 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		cfg, err := config.Load(root, configPath)
-		if err != nil {
+		// list is the one read-only command that stays useful without a
+		// config at all ("bare mode", parity with M1's "works on any git
+		// repo" promise): a config-less repo falls back to a bare Config
+		// (no ports/urls, so those table columns are simply omitted)
+		// instead of erroring or auto-scaffolding one as a side effect.
+		cfg, err := config.LoadExisting(root, configPath)
+		if errors.Is(err, config.ErrNoConfig) {
+			cfg = &config.Config{RepoRoot: root}
+		} else if err != nil {
 			return err
 		}
 

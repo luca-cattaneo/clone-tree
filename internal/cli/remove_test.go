@@ -106,6 +106,21 @@ func TestRemoveCloneCoWDsts_GIVEN_missingDst_WHEN_called_THEN_noopWithoutError(t
 	removeCloneCoWDsts(cfg, "feature", 1)
 }
 
+func TestRemoveCmd_GIVEN_noConfigInRepo_WHEN_run_THEN_errorsWithoutScaffolding(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	if err := removeCmd.RunE(removeCmd, []string{"feature"}); err == nil {
+		t.Fatalf("expected an error when no .clone-tree config exists")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(repoDir, ".clone-tree")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected remove to never scaffold .clone-tree/, stat err: %v", statErr)
+	}
+}
+
 func TestRemove_GIVEN_preRemoveHookAndDNSPattern_WHEN_removed_THEN_hookRunsAndHostsEntryDropped(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 

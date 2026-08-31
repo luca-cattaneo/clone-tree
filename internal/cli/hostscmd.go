@@ -14,9 +14,10 @@ import (
 )
 
 var hostsCmd = &cobra.Command{
-	Use:   "hosts [name]",
-	Short: "Show configured DNS entries",
-	Args:  cobra.MaximumNArgs(1),
+	Use:               "hosts [name]",
+	Short:             "Show configured DNS entries",
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeWorktreeNames,
 	RunE: func(_ *cobra.Command, args []string) error {
 		dir, err := cwd()
 		if err != nil {
@@ -28,7 +29,7 @@ var hostsCmd = &cobra.Command{
 			return err
 		}
 
-		cfg, err := config.Load(root, configPath)
+		cfg, err := config.LoadExisting(root, configPath)
 		if err != nil {
 			return err
 		}
@@ -54,6 +55,9 @@ var hostsCmd = &cobra.Command{
 				return err
 			}
 			renderTable(os.Stdout, stdoutIsTTY(), headers, [][]string{row})
+			if len(cfg.Urls) > 0 {
+				renderTable(os.Stdout, stdoutIsTTY(), []string{"Service", "URL"}, urlRows(cfg, name, slot))
+			}
 			return nil
 		}
 
@@ -91,17 +95,51 @@ func hostsRows(slotByName map[string]int, cfg *config.Config) ([][]string, error
 }
 
 // hostsRow builds one Slot/Name/DNS/In-/etc/hosts row: DNS is cfg.DNSPattern
-// expanded for name/slot, and the last column is "✓"/"-" from hosts.Has
-// against the package-level hostsPath.
+// expanded for name/slot, and the last column is "✓" when hosts.Has reports
+// a clone-tree-owned entry, "✓ (unmanaged)" when no owned entry exists but
+// hosts.HasDNS still finds dns bound by some other (non-ct) line, or "-"
+// when dns isn't present in the hosts file at all — all checked against the
+// package-level hostsPath.
 func hostsRow(cfg *config.Config, name string, slot int) ([]string, error) {
 	dns := cfg.InstanceVars(name, slot)["dns"]
-	present, err := hosts.Has(hostsPath, name)
+	owned, err := hosts.Has(hostsPath, name)
 	if err != nil {
 		return nil, err
 	}
+
 	mark := "-"
-	if present {
+	switch {
+	case owned:
 		mark = "✓"
+	default:
+		unmanaged, err := hosts.HasDNS(hostsPath, dns)
+		if err != nil {
+			return nil, err
+		}
+		if unmanaged {
+			mark = "✓ (unmanaged)"
+		}
 	}
+
 	return []string{strconv.Itoa(slot), name, dns, mark}, nil
+}
+
+// urlRows builds the Service/URL rows for cfg.Urls, sorted by label, with
+// every {var} in each URL template expanded via cfg.InstanceVars(name,
+// slot) (port vars + {dns} + the other instance vars) exactly like an env:
+// value.
+func urlRows(cfg *config.Config, name string, slot int) [][]string {
+	vars := cfg.InstanceVars(name, slot)
+
+	labels := make([]string, 0, len(cfg.Urls))
+	for label := range cfg.Urls {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+
+	rows := make([][]string, len(labels))
+	for i, label := range labels {
+		rows[i] = []string{label, config.Expand(cfg.Urls[label], vars)}
+	}
+	return rows
 }

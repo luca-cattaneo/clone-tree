@@ -14,18 +14,20 @@ import (
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start <name|slot>",
-	Short: "Start a worktree's compose stack",
-	Args:  cobra.ExactArgs(1),
+	Use:               "start <name|slot>",
+	Short:             "Start a worktree's compose stack",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeWorktreeNames,
 	RunE: func(_ *cobra.Command, args []string) error {
 		return runCompose(args[0], "up", "-d")
 	},
 }
 
 var stopCmd = &cobra.Command{
-	Use:   "stop <name|slot>",
-	Short: "Stop a worktree's compose stack",
-	Args:  cobra.ExactArgs(1),
+	Use:               "stop <name|slot>",
+	Short:             "Stop a worktree's compose stack",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeWorktreeNames,
 	RunE: func(_ *cobra.Command, args []string) error {
 		return runCompose(args[0], "down")
 	},
