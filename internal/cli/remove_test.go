@@ -121,6 +121,22 @@ func TestRemoveCmd_GIVEN_noConfigInRepo_WHEN_run_THEN_errorsWithoutScaffolding(t
 	}
 }
 
+func TestRemoveCmd_GIVEN_mainRepoNameOrSlot_WHEN_run_THEN_errorsAndRepoDirUntouched(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	if err := removeCmd.RunE(removeCmd, []string{filepath.Base(repoDir)}); err == nil {
+		t.Fatalf("expected an error when removing the main repository by name")
+	}
+
+	if _, statErr := os.Stat(repoDir); statErr != nil {
+		t.Fatalf("expected repoDir to still exist, stat err: %v", statErr)
+	}
+}
+
 func TestRemove_GIVEN_worktreeDirManuallyDeleted_WHEN_removed_THEN_cleansSlotAndRegistryWithoutError(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 	writeMinimalConfig(t, repoDir, "")

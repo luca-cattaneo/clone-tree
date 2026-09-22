@@ -55,6 +55,10 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
+		if wt.Path == root {
+			return fmt.Errorf("%q is the main repository, not a worktree", name)
+		}
+
 		// pre_remove runs first, before anything is torn down — the repo's
 		// escape hatch for cleanup that must see the instance still intact
 		// (e.g. reading its DB before the compose stack goes away).

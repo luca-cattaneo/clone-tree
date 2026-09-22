@@ -163,6 +163,9 @@ var createCmd = &cobra.Command{
 			rollback = append(rollback, func() { _ = hosts.Remove(hostsPath, name) })
 		}
 
+		// The post_create hook to be executed first.
+		rollback = append(rollback, func() { _ = composeDown(target, composeProjectName(filepath.Base(root), name)) })
+
 		if err = hooks.Run(hookAbsPath(root, cfg.Hooks.PostCreate), target, hooks.Env(name, slot, vars["dns"], target, cfg.PortValues(slot))); err != nil {
 			return err
 		}

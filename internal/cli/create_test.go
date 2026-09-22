@@ -425,6 +425,24 @@ func TestCreate_GIVEN_postCreateHook_WHEN_created_THEN_hookRunsWithInstanceEnv(t
 func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResidue(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 
+	target := filepath.Join(projectsDir, "repo-worktrees", "feature")
+	wantProject := composeProjectName("repo", "feature")
+
+	// Records the order composeRunner's "down" call and the worktree dir's
+	// disappearance happen in: compose must come down while target still
+	// exists, i.e. before the worktree dir is removed.
+	var downCalledWithDirStillPresent bool
+	var downCalls []struct{ dir, project string }
+	stubComposeRunner(t, func(dir, project string, args ...string) ([]byte, error) {
+		downCalls = append(downCalls, struct{ dir, project string }{dir, project})
+		if len(args) > 0 && args[0] == "down" {
+			if _, statErr := os.Stat(target); statErr == nil {
+				downCalledWithDirStillPresent = true
+			}
+		}
+		return nil, nil
+	})
+
 	writeHookScript(t, repoDir, filepath.Join(".clone-tree", "hooks", "post-create.sh"), "exit 1\n")
 
 	hostsFile := filepath.Join(t.TempDir(), "hosts")
@@ -479,5 +497,15 @@ func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResi
 	}
 	if present {
 		t.Fatalf("expected hosts entry to be removed on rollback")
+	}
+
+	if len(downCalls) != 1 {
+		t.Fatalf("expected composeRunner to be called once for rollback, got %d calls: %+v", len(downCalls), downCalls)
+	}
+	if downCalls[0].dir != target || downCalls[0].project != wantProject {
+		t.Fatalf("got compose down call %+v, want dir %q project %q", downCalls[0], target, wantProject)
+	}
+	if !downCalledWithDirStillPresent {
+		t.Fatalf("expected compose down to run before the worktree dir was removed")
 	}
 }
