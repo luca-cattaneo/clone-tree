@@ -94,6 +94,7 @@ func TestPortsCmd_GIVEN_fixtureRepoWithPortsAndRegisteredWorktree_WHEN_runWithou
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		fmt.Sprintf("ports:\n  DB_PORT: {base: %d, step: 10}\n", freePort-10) +

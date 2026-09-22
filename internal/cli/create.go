@@ -98,7 +98,17 @@ var createCmd = &cobra.Command{
 			branch = name
 		}
 
-		if err = gitwt.Create(root, target, branch); err != nil {
+		base := cfg.BaseBranch
+		if base == "" {
+			detected, ok := config.DetectBaseBranch(root)
+			if !ok {
+				err = errors.New("neither main nor master found: set base_branch in .clone-tree/config.yaml")
+				return err
+			}
+			base = detected
+		}
+
+		if err = gitwt.Create(root, target, branch, base); err != nil {
 			return err
 		}
 		rollback = append(rollback, func() { _ = forceRemoveWorktree(root, target, true) })

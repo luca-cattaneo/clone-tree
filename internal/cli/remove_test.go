@@ -175,6 +175,7 @@ func TestRemove_GIVEN_preRemoveHookAndDNSPattern_WHEN_removed_THEN_hookRunsAndHo
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +

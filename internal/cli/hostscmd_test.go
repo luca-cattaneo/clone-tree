@@ -143,6 +143,7 @@ func TestHostsCmd_GIVEN_configuredUrls_WHEN_runWithName_THEN_serviceUrlTableRend
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +
 		"ports:\n  PROXY_HTTPS_PORT: {base: 10443, step: 100}\n" +
@@ -219,6 +220,7 @@ func TestHostsCmd_GIVEN_fixtureRepoWithRegisteredWorktree_WHEN_run_THEN_noError(
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +

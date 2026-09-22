@@ -1,8 +1,11 @@
 package config
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -31,6 +34,14 @@ const maxCollisionBumps = 3
 // Called by Load whenever no config exists and no --config override was
 // given.
 func Scaffold(root string) (string, error) {
+	baseBranch, ok := DetectBaseBranch(root)
+	if !ok {
+		var err error
+		baseBranch, err = promptBaseBranch()
+		if err != nil {
+			return "", fmt.Errorf("scaffold: %w", err)
+		}
+	}
 	ports, literalComments, _, err := scanComposePorts(root, defaultMaxSlots)
 	if err != nil {
 		return "", fmt.Errorf("scaffold: scan compose ports: %w", err)
@@ -40,7 +51,7 @@ func Scaffold(root string) (string, error) {
 		return "", fmt.Errorf("scaffold: scan gitignored files: %w", err)
 	}
 
-	yamlText := renderScaffoldYAML(filepath.Base(root), ports, literalComments, files)
+	yamlText := renderScaffoldYAML(filepath.Base(root), baseBranch, ports, literalComments, files)
 
 	path := filepath.Join(root, ".clone-tree", "config.yaml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -66,6 +77,36 @@ func ScaffoldOrError(root string) error {
 	return &ScaffoldedError{Path: written}
 }
 
+// DetectBaseBranch picks the branch new worktrees are created from: the
+// first of main, master that resolves to a commit in root (git's DWIM
+// resolution means this also matches an origin/<name> remote-tracking ref
+// when no local branch of that name exists). ok is false when neither
+// resolves — callers decide what to do then (Scaffold prompts, `ct create`
+// errors).
+func DetectBaseBranch(root string) (string, bool) {
+	for _, candidate := range []string{"main", "master"} {
+		cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", candidate+"^{commit}")
+		cmd.Dir = root
+		if err := cmd.Run(); err == nil {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+// promptBaseBranch is Scaffold's fallback when DetectBaseBranch found
+// neither main nor master: it prompts on stderr and reads one trimmed line
+// from stdin; an empty answer errors.
+func promptBaseBranch() (string, error) {
+	_, _ = fmt.Fprint(os.Stderr, "base branch (neither main nor master found): ")
+	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return "", errors.New("base_branch: no answer")
+	}
+	return answer, nil
+}
+
 // renderScaffoldYAML builds the generated config.yaml text: a review-notice
 // header, the fixed M2 defaults, discovered ports (base: null + a "set me"
 // comment for anything unresolved, plus one "cannot be replicated" comment
@@ -74,12 +115,14 @@ func ScaffoldOrError(root string) error {
 // underneath, and empty env:/hooks: placeholders. repoName is the repo
 // dir's basename (filepath.Base(root)), resolved into the worktrees_dir
 // literal so the generated value works as-is without requiring the
-// {repo} template.
-func renderScaffoldYAML(repoName string, ports []scaffoldPort, literalComments []string, files scaffoldFiles) string {
+// {repo} template. baseBranch is the autodetected branch (see
+// detectBaseBranch), rendered as-is.
+func renderScaffoldYAML(repoName, baseBranch string, ports []scaffoldPort, literalComments []string, files scaffoldFiles) string {
 	var b strings.Builder
 	b.WriteString(scaffoldHeader)
 	b.WriteString("version: 1\n")
 	fmt.Fprintf(&b, "worktrees_dir: ../%s-worktrees\n", repoName)
+	fmt.Fprintf(&b, "base_branch: %s\n", baseBranch)
 	b.WriteString("# dns_pattern: per-worktree hostname, {name} = \"{name}.myapp.localhost\". Empty → localhost\n")
 	fmt.Fprintf(&b, "dns_pattern: %q\n", dnsScaffoldPattern)
 	fmt.Fprintf(&b, "max_slots: %d\n", defaultMaxSlots)

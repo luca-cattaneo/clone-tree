@@ -898,3 +898,68 @@ func TestScaffoldOrError_GIVEN_repo_WHEN_called_THEN_scaffoldsAndReturnsScaffold
 		t.Fatalf("expected scaffold to write config.yaml: %v", statErr)
 	}
 }
+
+func TestScaffold_GIVEN_mainBranch_WHEN_scaffolded_THEN_baseBranchIsMain(t *testing.T) {
+	repo := newFixtureRepo(t)
+
+	data := readGeneratedConfigAfterScaffold(t, repo)
+	if !strings.Contains(data, "base_branch: main\n") {
+		t.Fatalf("expected base_branch: main, got:\n%s", data)
+	}
+}
+
+func TestScaffold_GIVEN_masterOnlyBranch_WHEN_scaffolded_THEN_baseBranchIsMaster(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "--initial-branch=master")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(repo, "README.md"), "fixture\n")
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "initial commit")
+
+	data := readGeneratedConfigAfterScaffold(t, repo)
+	if !strings.Contains(data, "base_branch: master\n") {
+		t.Fatalf("expected base_branch: master, got:\n%s", data)
+	}
+}
+
+func TestDetectBaseBranch_GIVEN_masterOnlyRepo_WHEN_detected_THEN_masterReturnedTrue(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "--initial-branch=master")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(repo, "README.md"), "fixture\n")
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "initial commit")
+
+	got, ok := config.DetectBaseBranch(repo)
+	if !ok || got != "master" {
+		t.Fatalf("got (%q, %v), want (\"master\", true)", got, ok)
+	}
+}
+
+func TestDetectBaseBranch_GIVEN_neitherMainNorMaster_WHEN_detected_THEN_falseReturned(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "--initial-branch=trunk")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+	writeFile(t, filepath.Join(repo, "README.md"), "fixture\n")
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "initial commit")
+
+	got, ok := config.DetectBaseBranch(repo)
+	if ok {
+		t.Fatalf("got (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+// readGeneratedConfigAfterScaffold scaffolds repo and returns the raw
+// generated config.yaml text (unparsed — used by tests that only assert on
+// the rendered YAML, not the parsed Config).
+func readGeneratedConfigAfterScaffold(t *testing.T, repo string) string {
+	t.Helper()
+	if _, err := config.Scaffold(repo); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	return readGeneratedConfig(t, repo)
+}

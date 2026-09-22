@@ -118,7 +118,7 @@ func TestCreateListRemove_GIVEN_newBranch_WHEN_createThenListThenRemove_THEN_rou
 	wtDir := repo + "-worktrees"
 	target := wtDir + "/feature"
 
-	if err := gitwt.Create(repo, target, "feature"); err != nil {
+	if err := gitwt.Create(repo, target, "feature", "main"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func TestCreate_GIVEN_existingBranch_WHEN_created_THEN_reusesBranchInsteadOfFail
 	wtDir := repo + "-worktrees"
 	target := wtDir + "/existing"
 
-	if err := gitwt.Create(repo, target, "existing"); err != nil {
+	if err := gitwt.Create(repo, target, "existing", "main"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -218,7 +218,7 @@ func TestCreate_GIVEN_branchExistsOnlyOnRemote_WHEN_created_THEN_tracksRemoteBra
 	wtDir := repo + "-worktrees"
 	target := wtDir + "/feat"
 
-	if err := gitwt.Create(repo, target, "feat"); err != nil {
+	if err := gitwt.Create(repo, target, "feat", "main"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -234,12 +234,72 @@ func TestCreate_GIVEN_branchExistsOnlyOnRemote_WHEN_created_THEN_tracksRemoteBra
 	}
 }
 
+func TestCreate_GIVEN_baseDiffersFromHEAD_WHEN_created_THEN_newBranchStartsFromBaseNotHEAD(t *testing.T) {
+	repo := newFixtureRepo(t)
+	runGit(t, repo, "checkout", "-b", "other")
+	otherFile := filepath.Join(repo, "other.txt")
+	if err := os.WriteFile(otherFile, []byte("other\n"), 0o644); err != nil {
+		t.Fatalf("write other.txt: %v", err)
+	}
+	runGit(t, repo, "add", "other.txt")
+	runGit(t, repo, "commit", "-m", "other commit")
+	// HEAD is now "other", ahead of main.
+
+	wtDir := repo + "-worktrees"
+	target := wtDir + "/feature"
+
+	if err := gitwt.Create(repo, target, "feature", "main"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	wantHash := runGitOutput(t, repo, "rev-parse", "main")
+	gotHash := runGitOutput(t, target, "rev-parse", "HEAD")
+	if gotHash != wantHash {
+		t.Fatalf("got worktree HEAD %q, want %q (main's tip, not HEAD/other)", gotHash, wantHash)
+	}
+}
+
+func TestCreate_GIVEN_baseBranchAheadOnRemote_WHEN_created_THEN_startsFromRemoteBase(t *testing.T) {
+	source := newFixtureRepo(t)
+	mainAheadFile := filepath.Join(source, "main-ahead.txt")
+	if err := os.WriteFile(mainAheadFile, []byte("ahead\n"), 0o644); err != nil {
+		t.Fatalf("write main-ahead.txt: %v", err)
+	}
+	runGit(t, source, "add", "main-ahead.txt")
+	runGit(t, source, "commit", "-m", "main ahead commit")
+
+	bareOrigin := source + ".git"
+	runGit(t, filepath.Dir(source), "clone", "--bare", source, bareOrigin)
+
+	repo := source + "-clone"
+	runGit(t, filepath.Dir(source), "clone", bareOrigin, repo)
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test")
+
+	// Local main lags behind origin/main: Create must start the new branch
+	// from origin/main's tip, not local main's.
+	runGit(t, repo, "reset", "--hard", "HEAD~1")
+
+	wtDir := repo + "-worktrees"
+	target := wtDir + "/feature"
+
+	if err := gitwt.Create(repo, target, "feature", "main"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	wantHash := runGitOutput(t, bareOrigin, "rev-parse", "refs/heads/main")
+	gotHash := runGitOutput(t, target, "rev-parse", "HEAD")
+	if gotHash != wantHash {
+		t.Fatalf("got worktree HEAD %q, want %q (origin/main's tip)", gotHash, wantHash)
+	}
+}
+
 func TestPrune_GIVEN_worktreeDirManuallyDeleted_WHEN_pruned_THEN_metadataRemoved(t *testing.T) {
 	repo := newFixtureRepo(t)
 	wtDir := repo + "-worktrees"
 	target := wtDir + "/feature"
 
-	if err := gitwt.Create(repo, target, "feature"); err != nil {
+	if err := gitwt.Create(repo, target, "feature", "main"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if err := os.RemoveAll(target); err != nil {

@@ -59,6 +59,7 @@ type Hooks struct {
 type Config struct {
 	Version      int               `yaml:"version"`
 	WorktreesDir string            `yaml:"worktrees_dir"`
+	BaseBranch   string            `yaml:"base_branch"`
 	DNSPattern   string            `yaml:"dns_pattern"`
 	MaxSlots     int               `yaml:"max_slots"`
 	Ports        map[string]Port   `yaml:"ports"`

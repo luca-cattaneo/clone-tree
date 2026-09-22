@@ -38,6 +38,7 @@ func writeMinimalConfig(t *testing.T, repoDir, extra string) {
 	t.Helper()
 	yaml := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +
@@ -140,6 +141,7 @@ func dbPortFixture(t *testing.T) (repoDir string, slot1Port int) {
 
 	yaml := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		fmt.Sprintf("ports:\n  DB_PORT: {base: %d, step: 10}\n", slot1Port-10) +
@@ -311,6 +313,7 @@ func TestDoctorCmd_GIVEN_missingPostCreateHook_WHEN_run_THEN_hookCheckFails(t *t
 	// hooks.post_create points at a script that is never written.
 	yaml := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +

@@ -31,7 +31,7 @@ func TestRepoRoot_GIVEN_mainRepoDir_WHEN_resolved_THEN_returnsSameDir(t *testing
 func TestRepoRoot_GIVEN_dirInsideLinkedWorktree_WHEN_resolved_THEN_returnsMainRepoRoot(t *testing.T) {
 	repo := newFixtureRepo(t)
 	wtPath := repo + "-worktrees/feature"
-	if err := gitwt.Create(repo, wtPath, "feature"); err != nil {
+	if err := gitwt.Create(repo, wtPath, "feature", "main"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 

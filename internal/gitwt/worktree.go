@@ -108,12 +108,26 @@ func RemoteBranchExists(dir, branch string) (bool, error) {
 	return refExists(dir, "refs/remotes/origin/"+branch)
 }
 
+// baseStartPoint returns "origin/<base>" if that remote ref exists, else
+// base itself, for use as the start-point of a new branch.
+func baseStartPoint(dir, base string) (string, error) {
+	remoteExists, err := RemoteBranchExists(dir, base)
+	if err != nil {
+		return "", err
+	}
+	if remoteExists {
+		return "origin/" + base, nil
+	}
+	return base, nil
+}
+
 // Create adds a new worktree at path for branch. If branch does not exist
-// locally, it fetches origin/<branch> first (ignoring fetch errors, e.g. no
-// remote configured or offline) and, when that remote branch exists, creates
-// branch tracking it; otherwise it creates branch from the current HEAD, as
-// before.
-func Create(dir, path, branch string) error {
+// locally, it fetches origin/<branch> (and origin/<base> in the same
+// best-effort call, ignoring fetch errors, e.g. no remote configured or
+// offline) and, when the remote branch exists, creates branch tracking it;
+// otherwise it creates branch from base — starting from origin/<base> when
+// that remote ref exists, else from the local base ref.
+func Create(dir, path, branch, base string) error {
 	exists, err := BranchExists(dir, branch)
 	if err != nil {
 		return err
@@ -124,7 +138,11 @@ func Create(dir, path, branch string) error {
 	case exists:
 		cmd = exec.Command("git", "worktree", "add", path, branch)
 	default:
-		fetchCmd := exec.Command("git", "fetch", "origin", branch)
+		fetchArgs := []string{"fetch", "origin", branch}
+		if base != branch {
+			fetchArgs = append(fetchArgs, base)
+		}
+		fetchCmd := exec.Command("git", fetchArgs...)
 		fetchCmd.Dir = dir
 		_ = fetchCmd.Run()
 
@@ -135,7 +153,11 @@ func Create(dir, path, branch string) error {
 		if remoteExists {
 			cmd = exec.Command("git", "worktree", "add", "--track", "-b", branch, path, "origin/"+branch)
 		} else {
-			cmd = exec.Command("git", "worktree", "add", "-b", branch, path)
+			start, err := baseStartPoint(dir, base)
+			if err != nil {
+				return err
+			}
+			cmd = exec.Command("git", "worktree", "add", "-b", branch, path, start)
 		}
 	}
 	cmd.Dir = dir

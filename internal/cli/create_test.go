@@ -124,6 +124,7 @@ func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollb
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +
@@ -173,6 +174,7 @@ func TestCreate_GIVEN_candidateSlotPortAlreadyBusy_WHEN_created_THEN_errorsAndNo
 	// equal the busy listener's port.
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		fmt.Sprintf("ports:\n  DB_PORT: {base: %d, step: 10}\n", busyPort-10) +
@@ -239,6 +241,7 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +
@@ -305,6 +308,62 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	}
 }
 
+// gitRevParse runs `git rev-parse ref` in dir and returns the trimmed
+// output (a commit hash).
+func gitRevParse(t *testing.T, dir, ref string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", ref)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse %s: %v", ref, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestCreate_GIVEN_noBaseBranchInConfig_WHEN_created_THEN_newBranchTipMatchesDetectedMain(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+
+	// Move HEAD off main onto another branch with an extra commit, so a
+	// naive "branch from HEAD" would diverge from main's tip.
+	runGit(t, repoDir, "checkout", "-b", "wip")
+	if err := os.WriteFile(filepath.Join(repoDir, "extra.txt"), []byte("extra\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile extra.txt: %v", err)
+	}
+	runGit(t, repoDir, "add", "extra.txt")
+	runGit(t, repoDir, "commit", "-m", "extra commit on wip")
+
+	configYAML := "version: 1\n" +
+		"worktrees_dir: ../repo-worktrees\n" +
+		"dns_pattern: \"\"\n" +
+		"max_slots: 9\n" +
+		"ports: {}\n" +
+		"env: {}\n" +
+		"files: {}\n" +
+		"hooks: {}\n"
+	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .clone-tree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clone-tree", "config.yaml"), []byte(configYAML), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+	createBranch = ""
+
+	if err := createCmd.RunE(createCmd, []string{"x"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
+	mainTip := gitRevParse(t, repoDir, "main")
+	newTip := gitRevParse(t, filepath.Join(worktreesDir, "x"), "HEAD")
+	if newTip != mainTip {
+		t.Fatalf("got new branch tip %q, want it to match main tip %q", newTip, mainTip)
+	}
+}
+
 // writeHookScript writes an executable shell script fixture at dir/name and
 // returns its path.
 func writeHookScript(t *testing.T, dir, name, body string) string {
@@ -328,6 +387,7 @@ func TestCreate_GIVEN_postCreateHook_WHEN_created_THEN_hookRunsWithInstanceEnv(t
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +
@@ -377,6 +437,7 @@ func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResi
 
 	configYAML := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
+		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +

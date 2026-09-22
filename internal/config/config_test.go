@@ -28,6 +28,7 @@ func TestLoadExisting_GIVEN_validConfig_WHEN_loaded_THEN_fieldsParsedAndWorktree
 	writeConfig(t, root, `
 version: 1
 worktrees_dir: ../{repo}-worktrees
+base_branch: main
 dns_pattern: "local-{name}.dev.example.com"
 max_slots: 5
 ports:
@@ -62,7 +63,7 @@ env:
 func TestLoadExisting_GIVEN_absoluteWorktreesDir_WHEN_loaded_THEN_keptAsIs(t *testing.T) {
 	root := t.TempDir()
 	abs := t.TempDir()
-	writeConfig(t, root, "version: 1\nworktrees_dir: "+abs+"\nmax_slots: 1\n")
+	writeConfig(t, root, "version: 1\nworktrees_dir: "+abs+"\nbase_branch: main\nmax_slots: 1\n")
 
 	cfg, err := config.LoadExisting(root, "")
 	if err != nil {
@@ -77,7 +78,7 @@ func TestLoadExisting_GIVEN_configOverridePath_WHEN_loaded_THEN_usesThatFileInst
 	root := t.TempDir()
 	overrideDir := t.TempDir()
 	overridePath := filepath.Join(overrideDir, "custom-config.yaml")
-	if err := os.WriteFile(overridePath, []byte("version: 1\nworktrees_dir: /tmp/wt\nmax_slots: 3\n"), 0o644); err != nil {
+	if err := os.WriteFile(overridePath, []byte("version: 1\nworktrees_dir: /tmp/wt\nbase_branch: main\nmax_slots: 3\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -145,22 +146,22 @@ func TestValidate_GIVEN_invariantViolations_WHEN_validated_THEN_errors(t *testin
 }
 
 func TestValidate_GIVEN_nilPortBase_WHEN_validated_THEN_errorNamesTheVar(t *testing.T) {
-	cfg := config.Config{Version: 1, MaxSlots: 1, Ports: map[string]config.Port{
-		"BUGGREGATOR_HTTP_PORT": {Base: nil, Step: 10},
+	cfg := config.Config{Version: 1, MaxSlots: 1, BaseBranch: "main", Ports: map[string]config.Port{
+		"APP_HTTP_PORT": {Base: nil, Step: 10},
 	}}
 
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	want := "set base for BUGGREGATOR_HTTP_PORT in .clone-tree/config.yaml"
+	want := "set base for APP_HTTP_PORT in .clone-tree/config.yaml"
 	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("got %q, want it to contain %q", err.Error(), want)
 	}
 }
 
 func TestValidate_GIVEN_minimalValidConfig_WHEN_validated_THEN_noError(t *testing.T) {
-	cfg := config.Config{Version: 1, MaxSlots: 1}
+	cfg := config.Config{Version: 1, MaxSlots: 1, BaseBranch: "main"}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
@@ -189,6 +190,7 @@ func TestLoadExisting_GIVEN_filesIDEConfigured_WHEN_loaded_THEN_parsedSeparately
 	writeConfig(t, root, `
 version: 1
 worktrees_dir: ../{repo}-worktrees
+base_branch: main
 max_slots: 1
 files:
   ide: [.idea/]
