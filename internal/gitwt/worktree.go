@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -202,25 +201,4 @@ func Prune(dir string) error {
 		return fmt.Errorf("git worktree prune: %s", strings.TrimSpace(stderr.String()))
 	}
 	return nil
-}
-
-// Exec runs args[0] with args[1:] in dir, inheriting the current process's
-// stdio. It returns the child's exit code; err is non-nil only when the
-// command could not be started at all (e.g. binary not found).
-func Exec(dir string, args []string) (int, error) {
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = dir
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Run()
-	if err == nil {
-		return 0, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode(), nil
-	}
-	return 1, err
 }

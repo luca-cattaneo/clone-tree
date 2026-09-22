@@ -65,7 +65,7 @@ func TestCompleteWorktreeNames_GIVEN_noConfigInRepo_WHEN_completed_THEN_silently
 }
 
 func TestCompleteWorktreeNames_GIVEN_argAlreadyGiven_WHEN_completed_THEN_fallsBackToDefaultCompletion(t *testing.T) {
-	got, directive := completeWorktreeNames(execCmd, []string{"feature"}, "")
+	got, directive := completeWorktreeNames(removeCmd, []string{"feature"}, "")
 	if got != nil {
 		t.Fatalf("got %#v, want nil", got)
 	}

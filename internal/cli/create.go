@@ -37,11 +37,7 @@ var createCmd = &cobra.Command{
 
 		cfg, err := config.LoadExisting(root, configPath)
 		if errors.Is(err, config.ErrNoConfig) {
-			// No config yet: scaffold it via the same entry point
-			// `ct create-config` uses, and stop here — a freshly
-			// scaffolded config needs human review before ct acts on
-			// it, so create never proceeds to provisioning in the
-			// same run.
+			// No config yet: scaffold it and stop here.
 			return config.ScaffoldOrError(root)
 		}
 		if err != nil {
@@ -53,9 +49,6 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		// Rollback stack: on any failure below, undo whatever already
-		// succeeded, in reverse order, so a half-provisioned worktree
-		// never survives a failed create.
 		var rollback []func()
 		defer func() {
 			if err != nil {
@@ -65,9 +58,7 @@ var createCmd = &cobra.Command{
 			}
 		}()
 
-		// Probe the candidate slot's ports before touching anything: a
-		// busy port must abort cleanly, not half-provision a worktree
-		// onto a port another stack already owns.
+		// Probe the candidate slot's ports before touching anything.
 		candidateSlot, err := reg.NextFree(cfg.MaxSlots)
 		if err != nil {
 			return err
@@ -117,9 +108,6 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		// copy/hardlink land inside target itself, so no separate undo is
-		// needed: gitwt.Remove (already on the rollback stack) deletes the
-		// whole worktree, taking them with it.
 		vars := cfg.InstanceVars(name, slot)
 		for _, rel := range cfg.Files.Copy {
 			if err = fsops.Copy(filepath.Join(root, rel), filepath.Join(target, rel)); err != nil {
@@ -137,8 +125,7 @@ var createCmd = &cobra.Command{
 			}
 		}
 
-		// clone_cow destinations live outside target (typically a sibling
-		// datadir), so they need their own rollback entry.
+		// clone_cow destinations live outside target, so they need their own rollback entry.
 		for _, cc := range cfg.Files.CloneCoW {
 			dst := config.Expand(cc.Dst, vars)
 			if err = fsops.CloneCoW(config.Expand(cc.Src, vars), dst); err != nil {
@@ -147,10 +134,7 @@ var createCmd = &cobra.Command{
 			rollback = append(rollback, func() { _ = os.RemoveAll(dst) })
 		}
 
-		// Sibling symlinks are shared across every worktree in
-		// cfg.WorktreesDir, not per-instance: idempotent to (re)create, and
-		// never undone on rollback or `ct remove` — removing one would
-		// break every other worktree's sibling mount.
+		// Sibling symlinks are shared across every worktree, not to be removed.
 		if err = fsops.SymlinkSiblings(cfg.Files.SymlinkSiblings, vars["projects_dir"], cfg.WorktreesDir); err != nil {
 			return err
 		}

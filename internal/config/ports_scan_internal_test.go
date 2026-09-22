@@ -22,9 +22,9 @@ func TestParseBindingString_GIVEN_bindingGrammarTable_WHEN_parsed_THEN_piecesExt
 		{"dash default", "${DB_PORT-3306}:3306", "DB_PORT", 3306, true, 3306},
 		{"bare var", "${DB_PORT}:3306", "DB_PORT", 0, false, 3306},
 		{"literal", "8443:443", "", 8443, false, 443},
-		{"ip prefix", "127.0.0.1:${BUGGREGATOR_HTTP_PORT}:8000", "BUGGREGATOR_HTTP_PORT", 0, false, 8000},
+		{"ip prefix", "127.0.0.1:${APP_HTTP_PORT}:8000", "APP_HTTP_PORT", 0, false, 8000},
 		{"ip prefix with default", "127.0.0.1:${MINIO_PORT:-1081}:81", "MINIO_PORT", 1081, true, 81},
-		{"templated ip prefix (real-world TagPay shape)", "${BIND_IP:-0.0.0.0}:${DB_PORT-3306}:3306", "DB_PORT", 3306, true, 3306},
+		{"templated ip prefix (real-world shape)", "${BIND_IP:-0.0.0.0}:${DB_PORT-3306}:3306", "DB_PORT", 3306, true, 3306},
 		{"templated ip prefix with colon-dash default", "${BIND_IP:-0.0.0.0}:${PROXY_HTTP_PORT:-80}:80", "PROXY_HTTP_PORT", 80, true, 80},
 		{"proto suffix", "${DB_PORT:-3306}:3306/udp", "DB_PORT", 3306, true, 3306},
 		{"ip and literal", "127.0.0.1:8080:80", "", 8080, false, 80},
@@ -301,7 +301,7 @@ services:
 services:
   buggregator:
     ports: !override
-      - "127.0.0.1:${BUGGREGATOR_HTTP_PORT}:8000"
+      - "127.0.0.1:${APP_HTTP_PORT}:8000"
 `)
 
 	raws := extractBindingsFallback([]string{base, override})
@@ -309,7 +309,7 @@ services:
 	var gotBuggregator, gotWeb bool
 	for _, rb := range raws {
 		switch rb.varName {
-		case "BUGGREGATOR_HTTP_PORT":
+		case "APP_HTTP_PORT":
 			gotBuggregator = true
 		case "PROXY_HTTP_PORT":
 			gotWeb = true
@@ -319,7 +319,7 @@ services:
 		}
 	}
 	if !gotBuggregator {
-		t.Fatalf("expected BUGGREGATOR_HTTP_PORT (from the !override file) in %#v", raws)
+		t.Fatalf("expected APP_HTTP_PORT (from the !override file) in %#v", raws)
 	}
 	if !gotWeb {
 		t.Fatalf("expected PROXY_HTTP_PORT (untouched by override, appended) in %#v", raws)

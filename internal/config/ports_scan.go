@@ -13,20 +13,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// scaffoldPort is one discovered ports: entry: Base is nil when no value
-// could be resolved anywhere (bare ${VAR}, nothing in .env) — the scaffold
-// still emits it (as `base: null`) so the human sees every var compose
-// actually uses. Comment holds zero or more full comment lines (warnings,
-// "set me" notes, collision notes) rendered directly above the entry.
 type scaffoldPort struct {
 	Name    string
 	Base    *int
 	Step    int
 	Comment []string
-	// ContainerPort and Service are the resolving rawBinding's container
-	// port and owning compose service, carried through purely for the
-	// scaffold's urls: autodetect (see renderURLs in scaffold.go): Service
-	// becomes the url label, ContainerPort decides http vs https.
 	ContainerPort int
 	Service       string
 }
@@ -37,15 +28,12 @@ var (
 	reVarBare         = regexp.MustCompile(`^\$\{(\w+)\}$`)
 	reLiteral         = regexp.MustCompile(`^(\d+)$`)
 	// reIPPrefix strips an optional bind-address prefix ahead of the real
-	// host spec: either a literal IPv4 dotted quad ("127.0.0.1:...") or —
-	// as real compose files commonly write it — a ${VAR}/${VAR:-d}/${VAR-d}
-	// expression standing in for the bind address itself (TagPay's
-	// "${BIND_IP:-0.0.0.0}:${DB_PORT-3306}:3306" is exactly this shape).
+	// host spec: either a literal IPv4 dotted quad ("127.0.0.1:...") or
+	// expression standing in for the bind address itself
+	// ("${BIND_IP:-0.0.0.0}:${DB_PORT-3306}:3306").
 	reIPPrefix = regexp.MustCompile(`^(?:\$\{\w+(?::?-[^}]*)?\}|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(.+)$`)
 )
 
-// flexString captures a YAML scalar's raw text regardless of whether it was
-// written as a quoted string or a bare int (e.g. compose's `published:`).
 type flexString string
 
 func (s *flexString) UnmarshalYAML(node *yaml.Node) error {
@@ -61,9 +49,6 @@ type composeService struct {
 	Ports []yaml.Node `yaml:"ports"`
 }
 
-// composeServiceRaw captures a service's `ports:` value as a raw Node
-// (undecoded), so the fallback merger can inspect its `!override` tag
-// before deciding how to combine it with an earlier file's declaration.
 type composeServiceRaw struct {
 	PortsNode yaml.Node `yaml:"ports"`
 }
@@ -77,16 +62,6 @@ type composePortLong struct {
 	Published flexString `yaml:"published"`
 }
 
-// rawBinding is one host-binding, parsed into its grammar pieces but not
-// yet resolved against .env: varName is "" for a literal numeric binding;
-// hasDefault distinguishes `${VAR:-d}`/`${VAR-d}` (literal holds d) from a
-// bare `${VAR}` (literal is meaningless, containerPort is the only number
-// available). svcName is the owning compose service — used to group
-// literal bindings into one "cannot be replicated" comment per service.
-// sourceFile is the originating compose filename when the discovery path
-// tracks it per-binding (fallback yaml merge); it is "" for docker compose
-// config's already-merged output, where no single source file can be
-// named per binding.
 type rawBinding struct {
 	varName       string
 	literal       int
@@ -98,15 +73,7 @@ type rawBinding struct {
 
 // scanComposePorts discovers every host-port binding for root's compose
 // files, resolves each ${VAR} binding against <root>/.env into one
-// scaffoldPort per distinct var (collision-checked across slots
-// 1..maxSlots), and separately groups literal (non-parameterized)
-// bindings into one "cannot be replicated" comment per owning service
-// (literalComments — clone-tree never rewrites compose YAML, so a literal
-// binding cannot be made slot-aware; it gets no ports: entry and no .env
-// var, only a comment). discovery names which path produced the bindings
-// ("docker compose config", "fallback yaml merge", or "none" when there
-// are no compose files), purely informational (logged by the caller /
-// returned for tests).
+// scaffoldPort per distinct var.
 func scanComposePorts(root string, maxSlots int) (ports []scaffoldPort, literalComments []string, discovery string, err error) {
 	files, err := composeFiles(root)
 	if err != nil {
@@ -122,19 +89,13 @@ func scanComposePorts(root string, maxSlots int) (ports []scaffoldPort, literalC
 	return resolvePorts(raws, dotenv, maxSlots), literalPortComments(raws), discovery, nil
 }
 
-// LiteralBinding is one host-port binding compose exposes without a ${VAR}
-// name — clone-tree never rewrites compose YAML, so it can never be made
-// slot-aware. Surfaced by `ct doctor`'s ports check: one entry per binding,
-// unlike literalPortComments (used by Scaffold) which groups every literal
-// port on a service into a single comment.
 type LiteralBinding struct {
 	Service string
 	Port    int
 }
 
 // ScanLiteralPortBindings discovers every non-${VAR}-parameterized host-port
-// binding in root's compose files, one LiteralBinding per binding. A repo
-// with no compose files yields (nil, nil), same as scanComposePorts.
+// binding in root's compose files.
 func ScanLiteralPortBindings(root string) ([]LiteralBinding, error) {
 	files, err := composeFiles(root)
 	if err != nil {
@@ -154,10 +115,7 @@ func ScanLiteralPortBindings(root string) ([]LiteralBinding, error) {
 	return out, nil
 }
 
-// composeFiles resolves the file list docker compose itself would use:
-// <root>/.env's COMPOSE_FILE (split on COMPOSE_PATH_SEPARATOR, default ":")
-// when set, else the first compose default found plus its matching
-// override file. Only existing files are returned.
+// composeFiles resolves the file list docker compose plus its matching override file.
 func composeFiles(root string) ([]string, error) {
 	dotenv, _ := parseDotEnv(filepath.Join(root, ".env"))
 	if raw, ok := dotenv["COMPOSE_FILE"]; ok && raw != "" {
@@ -207,9 +165,6 @@ func defaultComposeFiles(root string) ([]string, error) {
 	return files, nil
 }
 
-// runDockerComposeConfig is overridable in tests to force the fallback
-// path without depending on whether docker is installed on the host
-// running the tests.
 var runDockerComposeConfig = func(root string, files []string) ([]byte, error) {
 	args := []string{"compose"}
 	for _, f := range files {
@@ -223,9 +178,7 @@ var runDockerComposeConfig = func(root string, files []string) ([]byte, error) {
 
 // extractBindings runs the primary discovery path (docker compose config,
 // which merges COMPOSE_FILE/override/!override exactly like a real `up`
-// would) and falls back to clone-tree's own yaml.v3 merge when docker
-// compose is unavailable or errors. Which path ran is logged to stderr and
-// returned for callers that want to report it.
+// would) and falls back to clone-tree's own yaml.
 func extractBindings(root string, files []string) ([]rawBinding, string) {
 	if out, err := runDockerComposeConfig(root, files); err == nil {
 		if raws, perr := parseComposeDoc(out); perr == nil {
@@ -237,8 +190,7 @@ func extractBindings(root string, files []string) ([]rawBinding, string) {
 	return extractBindingsFallback(files), "fallback yaml merge"
 }
 
-// parseComposeDoc extracts raw bindings from a single already-merged
-// compose document (docker compose config's stdout).
+// parseComposeDoc extracts raw bindings from a single already-merged compose document.
 func parseComposeDoc(data []byte) ([]rawBinding, error) {
 	var doc composeFile
 	if err := yaml.Unmarshal(data, &doc); err != nil {
@@ -266,10 +218,7 @@ func parseComposeDoc(data []byte) ([]rawBinding, error) {
 }
 
 // extractBindingsFallback merges each file's per-service ports declaration
-// in file order — a later file's `!override`-tagged ports list replaces
-// the running one for that service, otherwise it is appended — then
-// extracts raw bindings from the merged result. Malformed or unreadable
-// files are skipped, same as the old single-file scan.
+// in file order, then extracts raw bindings from the merged result.
 func extractBindingsFallback(files []string) []rawBinding {
 	type portItem struct {
 		node *yaml.Node
@@ -326,7 +275,6 @@ func extractBindingsFallback(files []string) []rawBinding {
 	return raws
 }
 
-// uniqueSortedInts returns the distinct values of nums, ascending.
 func uniqueSortedInts(nums []int) []int {
 	seen := map[int]bool{}
 	var out []int
@@ -381,10 +329,7 @@ func extractBinding(node yaml.Node) (string, bool) {
 }
 
 // parseBindingString parses a "[ip:]host:container[/proto]" binding string
-// into its grammar pieces. The container port is always the last segment
-// (stripped of an optional /proto suffix); an optional literal IPv4 prefix
-// on the host part is stripped before classifying the host as one of the
-// three recognized forms.
+// into its grammar pieces.
 func parseBindingString(binding, sourceFile string) (rawBinding, bool) {
 	idx := strings.LastIndex(binding, ":")
 	if idx < 0 {
@@ -420,11 +365,7 @@ func parseBindingString(binding, sourceFile string) (rawBinding, bool) {
 	}
 }
 
-// resolvePorts resolves every ${VAR} raw binding against dotenv (first
-// occurrence wins per var name — later duplicates, e.g. the same var bound
-// by two services, are dropped), then runs the cross-slot collision pass.
-// Literal (non-parameterized) bindings never reach resolveOne — they get
-// no ports: entry at all; see literalPortComments for their handling.
+// resolvePorts resolves every ${VAR} raw binding against dotenv, then runs the cross-slot collision pass.
 func resolvePorts(raws []rawBinding, dotenv map[string]string, maxSlots int) []scaffoldPort {
 	var ports []scaffoldPort
 	seen := map[string]bool{}
@@ -445,8 +386,7 @@ func resolvePorts(raws []rawBinding, dotenv map[string]string, maxSlots int) []s
 
 // literalPorts returns the distinct literal (non-parameterized) host ports
 // among raws. clone-tree never rewrites compose YAML, so these are bound
-// identically by main and every worktree — permanent obstacles the
-// collision pass must also steer var series away from.
+// identically by main and every worktree.
 func literalPorts(raws []rawBinding) []int {
 	var lits []int
 	for _, rb := range raws {
@@ -458,13 +398,8 @@ func literalPorts(raws []rawBinding) []int {
 }
 
 // literalPortComments groups literal (non-parameterized) host-port
-// bindings by owning service — clone-tree never rewrites compose YAML, so
-// these can never be made slot-aware — and renders one "cannot be
-// replicated" comment per service listing every distinct literal host
-// port on that service, sorted ascending. The source filename is appended
-// only when known: the fallback yaml-merge path tracks it per-binding: the
-// docker compose config path does not (its output is already merged), so
-// no filename is printed for it.
+// bindings by owning service and renders one "cannot be
+// replicated" comment per service.
 func literalPortComments(raws []rawBinding) []string {
 	type group struct {
 		ports []int
@@ -506,18 +441,12 @@ func literalPortComments(raws []rawBinding) []string {
 	return comments
 }
 
-// resolveOne resolves one ${VAR} raw binding to its value per the
-// scaffold's two-way rule: ${VAR:-d}/${VAR-d} -> .env[VAR] ?? d; bare
-// ${VAR} -> .env[VAR], else unresolved (base: null + a "set me" comment).
 func resolveOne(rb rawBinding, dotenv map[string]string) scaffoldPort {
 	if !rb.hasDefault {
 		if v, ok := dotenvInt(dotenv, rb.varName); ok {
 			base, step := baseStep(v)
 			return scaffoldPort{Name: rb.varName, Base: &base, Step: step, ContainerPort: rb.containerPort, Service: rb.svcName}
 		}
-		// Nothing tells us what this port actually is; step is uniform
-		// (10) regardless, so there is nothing left to derive from the
-		// container port here.
 		comment := fmt.Sprintf("# set me: ${%s} has no value in .env", rb.varName)
 		return scaffoldPort{Name: rb.varName, Step: 10, Comment: []string{comment}, ContainerPort: rb.containerPort, Service: rb.svcName}
 	}
@@ -530,12 +459,6 @@ func resolveOne(rb rawBinding, dotenv map[string]string) scaffoldPort {
 	return scaffoldPort{Name: rb.varName, Base: &base, Step: step, ContainerPort: rb.containerPort, Service: rb.svcName}
 }
 
-// baseStep is the base/step rule: a port already >= 1024 keeps its value
-// as base; a port < 1024 (a well-known/privileged port a proxy maps in
-// from) is pushed into the 10000+ range instead, since worktree slots
-// cannot bind privileged ports. Step is uniform (10) for every var — the
-// collision pass is what actually keeps series apart, not a wider default
-// step.
 func baseStep(original int) (base, step int) {
 	if original >= 1024 {
 		return original, 10
@@ -543,24 +466,8 @@ func baseStep(original int) (base, step int) {
 	return 10000 + original, 10
 }
 
-// maxCollisionRounds caps the fixpoint loop below; it is a generous safety
-// net, not a tuning knob — every var can only be bumped maxCollisionBumps
-// times, so the loop is guaranteed to stabilize well before this is hit.
 const maxCollisionRounds = 50
 
-// resolveCollisions repeatedly scans every ordered pair of resolved ports:
-// if var i's own worktree-slot values (slots 1..maxSlots — never its own
-// base, which is pinned to whatever main/slot-0 actually uses) land on var
-// j's base or on any of j's worktree-slot values, i is the "mover" that
-// created the collision, so i's step is the one multiplied by 10 (j's base
-// is fixed; touching j's step wouldn't remove a hit on j's base anyway).
-// literalPorts (non-parameterized host-port bindings) are checked the same
-// way — they are bound identically by main and every worktree, so they are
-// permanent obstacles too, but since they are not entries they never get
-// bumped themselves. This can cascade — bumping i can newly collide with a
-// var k (or a literal) that was clean before — hence the fixpoint loop, not
-// a single pass. A var capped at maxCollisionBumps without becoming clean
-// gets a "# collision" comment instead of silently shipping an overlap.
 func resolveCollisions(ports []scaffoldPort, maxSlots int, literalPorts []int) {
 	bumps := make([]int, len(ports))
 	commented := make([]bool, len(ports))
@@ -613,8 +520,6 @@ func resolveCollisions(ports []scaffoldPort, maxSlots int, literalPorts []int) {
 	}
 }
 
-// movesInto reports whether pi's own worktree-slot values (1..maxSlots)
-// land on pj's base or on any of pj's worktree-slot values.
 func movesInto(pi, pj scaffoldPort, maxSlots int) bool {
 	pjPoints := map[int]bool{*pj.Base: true}
 	for s := 1; s <= maxSlots; s++ {
@@ -628,10 +533,6 @@ func movesInto(pi, pj scaffoldPort, maxSlots int) bool {
 	return false
 }
 
-// hitsLiteral reports whether pi's own worktree-slot values (1..maxSlots)
-// land on any literal (non-parameterized) host port. pi's base is never
-// checked — a literal obstacle only matters for the slots worktrees
-// actually use.
 func hitsLiteral(pi scaffoldPort, maxSlots int, literalSet map[int]bool) bool {
 	for s := 1; s <= maxSlots; s++ {
 		if literalSet[*pi.Base+s*pi.Step] {
@@ -641,10 +542,6 @@ func hitsLiteral(pi scaffoldPort, maxSlots int, literalSet map[int]bool) bool {
 	return false
 }
 
-// parseDotEnv parses a .env file: KEY=VALUE lines, blank lines and #
-// comments ignored, surrounding single/double quotes on the value
-// stripped. A missing file yields an empty map (not an error) — callers
-// treat "no .env" as "no overrides", never as a failure.
 func parseDotEnv(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

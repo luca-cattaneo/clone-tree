@@ -31,8 +31,8 @@ func TestComposeProjectName_GIVEN_repoAndName_WHEN_built_THEN_hyphenJoined(t *te
 }
 
 func TestComposeProjectName_GIVEN_mixedCaseRepoOrName_WHEN_built_THEN_lowercased(t *testing.T) {
-	got := composeProjectName("TagPay", "documentCache")
-	if want := "tagpay-documentcache"; got != want {
+	got := composeProjectName("MyApp", "documentCache")
+	if want := "myapp-documentcache"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }

@@ -263,14 +263,14 @@ func TestScaffold_GIVEN_ipPrefixedBinding_WHEN_scaffolded_THEN_ipIgnoredAndVarPa
 services:
   buggregator:
     ports:
-      - "127.0.0.1:${BUGGREGATOR_HTTP_PORT:-8000}:8000"
+      - "127.0.0.1:${APP_HTTP_PORT:-8000}:8000"
 `)
 
 	cfg := scaffoldAndParse(t, repo)
 
-	p, ok := cfg.Ports["BUGGREGATOR_HTTP_PORT"]
+	p, ok := cfg.Ports["APP_HTTP_PORT"]
 	if !ok || p.Base == nil || *p.Base != 8000 {
-		t.Fatalf("got %#v, want BUGGREGATOR_HTTP_PORT base=8000", cfg.Ports)
+		t.Fatalf("got %#v, want APP_HTTP_PORT base=8000", cfg.Ports)
 	}
 }
 

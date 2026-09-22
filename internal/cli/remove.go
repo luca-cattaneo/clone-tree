@@ -141,8 +141,8 @@ func forceRemoveWorktree(root, path string, force bool) error {
 }
 
 // resolveNameOrSlot accepts either a worktree name or a slot number
-// (parity with tagpay-worktree.sh). Slot 0 is the main repo and can never
-// be removed this way.
+// (parity with the original worktree script). Slot 0 is the main repo and
+// can never be removed this way.
 func resolveNameOrSlot(reg *slots.Registry, arg string) (string, error) {
 	slot, err := strconv.Atoi(arg)
 	if err != nil {

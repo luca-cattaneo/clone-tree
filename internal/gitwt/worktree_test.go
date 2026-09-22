@@ -318,27 +318,3 @@ func TestPrune_GIVEN_worktreeDirManuallyDeleted_WHEN_pruned_THEN_metadataRemoved
 		t.Fatalf("expected pruned worktree metadata to be gone from git worktree list")
 	}
 }
-
-func TestExec_GIVEN_commandExitingNonZero_WHEN_run_THEN_exitCodePropagated(t *testing.T) {
-	repo := newFixtureRepo(t)
-
-	code, err := gitwt.Exec(repo, []string{"sh", "-c", "exit 7"})
-	if err != nil {
-		t.Fatalf("Exec: %v", err)
-	}
-	if code != 7 {
-		t.Fatalf("got exit code %d, want 7", code)
-	}
-}
-
-func TestExec_GIVEN_successfulCommand_WHEN_run_THEN_zeroExitCode(t *testing.T) {
-	repo := newFixtureRepo(t)
-
-	code, err := gitwt.Exec(repo, []string{"true"})
-	if err != nil {
-		t.Fatalf("Exec: %v", err)
-	}
-	if code != 0 {
-		t.Fatalf("got exit code %d, want 0", code)
-	}
-}

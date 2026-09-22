@@ -1,7 +1,5 @@
 // Package slots manages the name->slot registry backed by a flat
-// "<worktrees-dir>/.slots" file (one "name:slot" line per entry) — the same
-// format used by TagPay's tagpay-worktree.sh. Slot 0 is reserved for the
-// main repo and is never written to the file.
+// "<worktrees-dir>/.slots" file (one "name:slot" line per entry)
 package slots
 
 import (

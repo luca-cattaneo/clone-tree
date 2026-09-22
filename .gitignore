@@ -1,1 +1,4 @@
 /ct
+.claude/settings.local.json
+.work-files/
+.idea/

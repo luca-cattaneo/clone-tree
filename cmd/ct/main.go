@@ -1,4 +1,4 @@
-// Command ct is a zero-config git worktree manager.
+// Command ct is a git worktree manager.
 package main
 
 import (
@@ -16,11 +16,6 @@ func main() {
 		return
 	}
 
-	// ScaffoldedError renders its own multi-line, colorized checklist — the
-	// usual "ct: " prefix would land in front of the first line only and
-	// break the block's readability. cli.ErrChecksFailed is `ct doctor`'s
-	// sentinel for "the report I already printed to stdout found a ✗" — it
-	// carries nothing to add, so it prints nothing further.
 	var scaffolded *config.ScaffoldedError
 	switch {
 	case errors.As(err, &scaffolded):

@@ -12,12 +12,6 @@ const (
 	ansiReset = "\033[0m"
 )
 
-// renderTable writes headers and rows as a table to w, mimicking
-// tagpay-worktree.sh's cmd_list rendering: a leading blank line, a 2-space
-// left margin, 2-space gutters between left-aligned columns sized to
-// max(header, longest value), a bold header row (when bold is true), a
-// per-column `─` underline row sized to the exact column width, the data
-// rows, and a trailing blank line. Reused by future ports/hosts commands.
 func renderTable(w io.Writer, bold bool, headers []string, rows [][]string) {
 	widths := columnWidths(headers, rows)
 

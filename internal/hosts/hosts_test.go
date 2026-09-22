@@ -29,47 +29,47 @@ func readFile(t *testing.T, path string) string {
 func TestAdd_GIVEN_noExistingEntry_WHEN_added_THEN_appendedAndOthersUntouched(t *testing.T) {
 	path := writeTempHosts(t, "127.0.0.1 localhost\n::1 localhost\n")
 
-	if err := hosts.Add(path, "feature-x", "local-feature-x.dev.tagpay.fr"); err != nil {
+	if err := hosts.Add(path, "feature-x", "local-feature-x.my-dns.localhost"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	got := readFile(t, path)
-	want := "127.0.0.1 localhost\n::1 localhost\n127.0.0.1 local-feature-x.dev.tagpay.fr  # clone-tree:feature-x\n"
+	want := "127.0.0.1 localhost\n::1 localhost\n127.0.0.1 local-feature-x.my-dns.localhost  # clone-tree:feature-x\n"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
 func TestAdd_GIVEN_existingEntryForName_WHEN_addedAgain_THEN_replacedInPlace(t *testing.T) {
-	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 old-dns.dev.tagpay.fr  # clone-tree:feature-x\n::1 localhost\n")
+	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 old-dns.my-dns.localhost  # clone-tree:feature-x\n::1 localhost\n")
 
-	if err := hosts.Add(path, "feature-x", "new-dns.dev.tagpay.fr"); err != nil {
+	if err := hosts.Add(path, "feature-x", "new-dns.my-dns.localhost"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	got := readFile(t, path)
-	want := "127.0.0.1 localhost\n127.0.0.1 new-dns.dev.tagpay.fr  # clone-tree:feature-x\n::1 localhost\n"
+	want := "127.0.0.1 localhost\n127.0.0.1 new-dns.my-dns.localhost  # clone-tree:feature-x\n::1 localhost\n"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
 func TestAdd_GIVEN_nameThatIsPrefixOfAnother_WHEN_added_THEN_doesNotMatchTheOtherEntry(t *testing.T) {
-	path := writeTempHosts(t, "127.0.0.1 dns-a.dev.tagpay.fr  # clone-tree:foobar\n")
+	path := writeTempHosts(t, "127.0.0.1 dns-a.my-dns.localhost  # clone-tree:foobar\n")
 
-	if err := hosts.Add(path, "foo", "dns-b.dev.tagpay.fr"); err != nil {
+	if err := hosts.Add(path, "foo", "dns-b.my-dns.localhost"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	got := readFile(t, path)
-	want := "127.0.0.1 dns-a.dev.tagpay.fr  # clone-tree:foobar\n127.0.0.1 dns-b.dev.tagpay.fr  # clone-tree:foo\n"
+	want := "127.0.0.1 dns-a.my-dns.localhost  # clone-tree:foobar\n127.0.0.1 dns-b.my-dns.localhost  # clone-tree:foo\n"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
 func TestRemove_GIVEN_existingEntry_WHEN_removed_THEN_droppedAndOthersUntouched(t *testing.T) {
-	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 dns-a.dev.tagpay.fr  # clone-tree:feature-x\n::1 localhost\n")
+	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 dns-a.my-dns.localhost  # clone-tree:feature-x\n::1 localhost\n")
 
 	if err := hosts.Remove(path, "feature-x"); err != nil {
 		t.Fatalf("Remove: %v", err)
@@ -96,7 +96,7 @@ func TestRemove_GIVEN_absentEntry_WHEN_removed_THEN_noopWithoutError(t *testing.
 }
 
 func TestHas_GIVEN_presentAndAbsentNames_WHEN_checked_THEN_reportsCorrectly(t *testing.T) {
-	path := writeTempHosts(t, "127.0.0.1 dns-a.dev.tagpay.fr  # clone-tree:feature-x\n")
+	path := writeTempHosts(t, "127.0.0.1 dns-a.my-dns.localhost  # clone-tree:feature-x\n")
 
 	present, err := hosts.Has(path, "feature-x")
 	if err != nil {
@@ -117,8 +117,8 @@ func TestHas_GIVEN_presentAndAbsentNames_WHEN_checked_THEN_reportsCorrectly(t *t
 
 func TestList_GIVEN_mixOfOwnedAndForeignLines_WHEN_listed_THEN_onlyOwnedEntriesReturned(t *testing.T) {
 	path := writeTempHosts(t, "127.0.0.1 localhost\n"+
-		"127.0.0.1 dns-a.dev.tagpay.fr  # clone-tree:feature-a\n"+
-		"127.0.0.1 dns-b.dev.tagpay.fr  # clone-tree:feature-b\n"+
+		"127.0.0.1 dns-a.my-dns.localhost  # clone-tree:feature-a\n"+
+		"127.0.0.1 dns-b.my-dns.localhost  # clone-tree:feature-b\n"+
 		"192.168.1.1 router.local\n")
 
 	entries, err := hosts.List(path)
@@ -127,8 +127,8 @@ func TestList_GIVEN_mixOfOwnedAndForeignLines_WHEN_listed_THEN_onlyOwnedEntriesR
 	}
 
 	want := []hosts.Entry{
-		{Name: "feature-a", DNS: "dns-a.dev.tagpay.fr"},
-		{Name: "feature-b", DNS: "dns-b.dev.tagpay.fr"},
+		{Name: "feature-a", DNS: "dns-a.my-dns.localhost"},
+		{Name: "feature-b", DNS: "dns-b.my-dns.localhost"},
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("got %d entries, want %d: %+v", len(entries), len(want), entries)
@@ -177,14 +177,14 @@ func TestHasDNS_GIVEN_noMatchingLine_WHEN_checked_THEN_false(t *testing.T) {
 }
 
 func TestAdd_GIVEN_unmanagedLineForSameDNS_WHEN_added_THEN_replacedInPlaceNotDuplicated(t *testing.T) {
-	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 local-feature-x.dev.tagpay.fr\n::1 localhost\n")
+	path := writeTempHosts(t, "127.0.0.1 localhost\n127.0.0.1 local-feature-x.my-dns.localhost\n::1 localhost\n")
 
-	if err := hosts.Add(path, "feature-x", "local-feature-x.dev.tagpay.fr"); err != nil {
+	if err := hosts.Add(path, "feature-x", "local-feature-x.my-dns.localhost"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	got := readFile(t, path)
-	want := "127.0.0.1 localhost\n127.0.0.1 local-feature-x.dev.tagpay.fr  # clone-tree:feature-x\n::1 localhost\n"
+	want := "127.0.0.1 localhost\n127.0.0.1 local-feature-x.my-dns.localhost  # clone-tree:feature-x\n::1 localhost\n"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
@@ -193,12 +193,12 @@ func TestAdd_GIVEN_unmanagedLineForSameDNS_WHEN_added_THEN_replacedInPlaceNotDup
 func TestAdd_GIVEN_missingFile_WHEN_added_THEN_fileCreatedWithEntry(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "hosts")
 
-	if err := hosts.Add(path, "feature-x", "local-feature-x.dev.tagpay.fr"); err != nil {
+	if err := hosts.Add(path, "feature-x", "local-feature-x.my-dns.localhost"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	got := readFile(t, path)
-	want := "127.0.0.1 local-feature-x.dev.tagpay.fr  # clone-tree:feature-x\n"
+	want := "127.0.0.1 local-feature-x.my-dns.localhost  # clone-tree:feature-x\n"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
