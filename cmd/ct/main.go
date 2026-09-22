@@ -1,4 +1,3 @@
-// Command ct is a git worktree manager.
 package main
 
 import (

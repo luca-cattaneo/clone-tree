@@ -8,34 +8,21 @@ import (
 	"strings"
 )
 
-// hardlinkDirNames are top-level gitignored/untracked dir names known to be
-// large, reproducible dependency trees — a good hardlink candidate instead
-// of a full copy.
 var hardlinkDirNames = map[string]bool{
 	"vendor": true, "node_modules": true, ".venv": true,
 	"venv": true, "target": true, ".gradle": true,
 }
 
-// ideDirNames are top-level gitignored/untracked IDE config dirs. They are
-// suggested as a copy (an IDE config dir is small, and hardlinking it would
-// make every worktree share one workspace state) but bucketed separately
-// from the generic copy suggestions, since per-worktree patching (project
-// name, run configs) belongs in a post_create hook, not a plain copy.
 var ideDirNames = map[string]bool{
 	".idea": true, ".vscode": true, ".fleet": true, ".vs": true,
 }
 
-// scaffoldFiles holds the three commented-suggestion buckets the scaffold
-// proposes for files: — hardlink dep dirs, IDE config dirs, and everything
-// else (files and other dirs). The live files: value is always {}; humans
-// uncomment what they want.
 type scaffoldFiles struct {
 	hardlink bucket
 	ide      bucket
 	copy     bucket
 }
 
-// bucket collects deduped entries; every entry is rendered, no cap.
 type bucket struct {
 	items []string
 	seen  map[string]bool
@@ -57,17 +44,12 @@ func (b *bucket) sorted() []string {
 	return b.items
 }
 
-// scanGitignored buckets every untracked-or-ignored path reported by
-// `git status --ignored` into hardlink/ide/copy suggestions, first
-// collapsing each path to its shallowest gitignored ancestor directory (see
-// collapseToIgnoredAncestors) — git's own "traditional" --ignored collapsing
-// only merges a directory into one entry when everything under it is
-// untracked-or-ignored, so a gitignored dir that also holds tracked content
-// (e.g. a force-added `.gitkeep`) would otherwise still surface as several
-// individual files/subdirs even though the dir itself matches a gitignore
-// rule. Anything under a hardlink or ide dir is bucketed once, by its
-// top-level name, and never repeated in the generic copy bucket. Only
-// .git/ and .clone-tree/ are excluded outright.
+// git's own "traditional" --ignored collapsing only merges a directory into
+// one entry when everything under it is untracked-or-ignored, so a
+// gitignored dir that also holds tracked content (e.g. a force-added
+// `.gitkeep`) would otherwise still surface as several individual
+// files/subdirs even though the dir itself matches a gitignore rule —
+// collapseToIgnoredAncestors below corrects for that.
 func scanGitignored(root string) (scaffoldFiles, error) {
 	cmd := exec.Command("git", "status", "--porcelain=v1", "--ignored", "-z")
 	cmd.Dir = root
@@ -112,11 +94,6 @@ func scanGitignored(root string) (scaffoldFiles, error) {
 	return result, nil
 }
 
-// collapseToIgnoredAncestors maps every path to its shallowest ancestor
-// directory that is itself gitignored (rendered with a trailing "/"); a
-// path with no gitignored ancestor is returned unchanged. It batches a
-// single `git check-ignore` call over every ancestor dir of every path,
-// rather than one call per path.
 func collapseToIgnoredAncestors(root string, paths []string) ([]string, error) {
 	dirSet := map[string]bool{}
 	for _, path := range paths {
@@ -159,8 +136,6 @@ func ancestorDirs(path string) []string {
 	return dirs
 }
 
-// checkIgnoredDirs runs one batched `git check-ignore -z --stdin --no-index`
-// over dirs and returns the subset that matched a gitignore rule.
 // --no-index makes the check independent of whether anything under the dir
 // is already tracked (e.g. a force-added file). Exit status 1 means none of
 // the dirs matched — not an error — any other non-zero status is.

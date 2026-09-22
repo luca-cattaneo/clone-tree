@@ -85,8 +85,7 @@ func TestHostsRows_GIVEN_multipleRegistered_WHEN_built_THEN_sortedBySlot(t *test
 
 func TestHostsRow_GIVEN_unmanagedLineForDNS_WHEN_built_THEN_checkmarkUnmanagedColumn(t *testing.T) {
 	hostsFile := filepath.Join(t.TempDir(), "hosts")
-	// No "# clone-tree:" marker: a pre-existing, hand-added entry, or one
-	// left over from before this worktree was ct-managed.
+	// No "# clone-tree:" marker, i.e. an unmanaged entry.
 	if err := os.WriteFile(hostsFile, []byte("127.0.0.1 local-feature.dev.test\n"), 0o644); err != nil {
 		t.Fatalf("write hostsFile: %v", err)
 	}

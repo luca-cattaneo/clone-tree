@@ -36,12 +36,6 @@ var createConfigCmd = &cobra.Command{
 	},
 }
 
-// printScaffoldNotice prints a *ScaffoldedError's review checklist to
-// stdout and returns nil. Unlike `ct create` (which returns the
-// *ScaffoldedError as-is, stopping the command as a failure so the caller's
-// pipeline never proceeds past scaffolding), `ct create-config` IS the
-// scaffold: successfully generating the file is the command succeeding, so
-// it unwraps the notice, prints it, and exits 0.
 func printScaffoldNotice(err error) error {
 	var scaffolded *config.ScaffoldedError
 	if errors.As(err, &scaffolded) {

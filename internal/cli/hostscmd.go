@@ -70,8 +70,6 @@ var hostsCmd = &cobra.Command{
 	},
 }
 
-// hostsRows builds the Slot/Name/DNS/In-/etc/hosts rows for every
-// registered worktree, sorted by slot ascending.
 func hostsRows(slotByName map[string]int, cfg *config.Config) ([][]string, error) {
 	type entry struct {
 		name string
@@ -94,12 +92,6 @@ func hostsRows(slotByName map[string]int, cfg *config.Config) ([][]string, error
 	return rows, nil
 }
 
-// hostsRow builds one Slot/Name/DNS/In-/etc/hosts row: DNS is cfg.DNSPattern
-// expanded for name/slot, and the last column is "✓" when hosts.Has reports
-// a clone-tree-owned entry, "✓ (unmanaged)" when no owned entry exists but
-// hosts.HasDNS still finds dns bound by some other (non-ct) line, or "-"
-// when dns isn't present in the hosts file at all — all checked against the
-// package-level hostsPath.
 func hostsRow(cfg *config.Config, name string, slot int) ([]string, error) {
 	dns := cfg.InstanceVars(name, slot)["dns"]
 	owned, err := hosts.Has(hostsPath, name)
@@ -124,10 +116,6 @@ func hostsRow(cfg *config.Config, name string, slot int) ([]string, error) {
 	return []string{strconv.Itoa(slot), name, dns, mark}, nil
 }
 
-// urlRows builds the Service/URL rows for cfg.Urls, sorted by label, with
-// every {var} in each URL template expanded via cfg.InstanceVars(name,
-// slot) (port vars + {dns} + the other instance vars) exactly like an env:
-// value.
 func urlRows(cfg *config.Config, name string, slot int) [][]string {
 	vars := cfg.InstanceVars(name, slot)
 

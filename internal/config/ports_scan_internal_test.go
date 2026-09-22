@@ -44,9 +44,6 @@ func TestParseBindingString_GIVEN_bindingGrammarTable_WHEN_parsed_THEN_piecesExt
 }
 
 func TestParseBindingString_GIVEN_longSyntaxReassembled_WHEN_parsed_THEN_sameAsShortForm(t *testing.T) {
-	// extractBinding reassembles long-form {target, published} into
-	// "<published>:<target>" before parseBindingString ever sees it; this
-	// exercises that reassembled string directly.
 	rb, ok := parseBindingString("${PROXY_HTTP_PORT:-8080}:80", "docker-compose.yml")
 	if !ok {
 		t.Fatalf("expected ok")

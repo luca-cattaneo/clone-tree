@@ -9,8 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// completeWorktreeNames is the shared cobra.CompletionFunc for every
-// command taking a single <name|slot> positional.
 func completeWorktreeNames(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 	if len(args) != 0 {
 		return nil, cobra.ShellCompDirectiveDefault

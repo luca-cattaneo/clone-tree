@@ -16,10 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ErrChecksFailed is returned by doctorCmd's RunE when at least one check
-// printed a ✗ line. The report itself (already written to stdout before
-// RunE returns) explains what failed, so main.go recognizes this sentinel
-// and exits 1 without also wrapping it in the usual "ct: <err>" line.
 var ErrChecksFailed = errors.New("doctor: one or more checks failed")
 
 var doctorCmd = &cobra.Command{
@@ -46,7 +42,6 @@ var doctorCmd = &cobra.Command{
 	},
 }
 
-// severity is one doctorLine's ✓/✗/⚠ status.
 type severity int
 
 const (
@@ -66,26 +61,20 @@ func (s severity) mark() string {
 	}
 }
 
-// doctorLine is one status line under a doctorGroup.
 type doctorLine struct {
 	sev severity
 	msg string
 }
 
-// doctorGroup is one titled section of `ct doctor`'s output (config, ports,
-// busy ports, orphan slots, hooks, dns).
 type doctorGroup struct {
 	title string
 	lines []doctorLine
 }
 
-// runDoctor runs every check in order and collects their groups. config and
-// the literal-port-bindings check run unconditionally (root alone is
-// enough — the latter reads compose files directly, not .clone-tree/
-// config.yaml); every other check needs a loaded, valid config (a slot
-// registry, ports:, hooks:, dns_pattern all live there), so they are
-// skipped — not reported as failing — when config is missing (bare mode) or
-// invalid.
+// checkLiteralPorts runs unconditionally since it reads compose files
+// directly rather than .clone-tree/config.yaml. Every other check needs a
+// loaded, valid config, so they are skipped — not reported as failing —
+// when config is missing or invalid.
 func runDoctor(root, overridePath string) []doctorGroup {
 	cfg, configGroup := checkConfig(root, overridePath)
 	groups := []doctorGroup{configGroup, checkLiteralPorts(root)}
@@ -111,12 +100,6 @@ func runDoctor(root, overridePath string) []doctorGroup {
 	)
 }
 
-// checkConfig loads .clone-tree/config.yaml the same way every other
-// command does. A missing config is a ⚠ (bare mode is a legitimate state —
-// M1 promises `ct list` works on any git repo), not a ✗; a config that
-// exists but fails to parse/validate is a ✗. Returns a nil *config.Config
-// whenever the config isn't usable, so runDoctor knows to skip the checks
-// that depend on it.
 func checkConfig(root, overridePath string) (*config.Config, doctorGroup) {
 	cfg, err := config.LoadExisting(root, overridePath)
 	switch {
@@ -129,9 +112,6 @@ func checkConfig(root, overridePath string) (*config.Config, doctorGroup) {
 	}
 }
 
-// checkLiteralPorts surfaces every host-port binding in root's compose
-// files that isn't ${VAR}-parameterized — clone-tree can never make one
-// slot-aware, since it never rewrites compose YAML.
 func checkLiteralPorts(root string) doctorGroup {
 	bindings, err := config.ScanLiteralPortBindings(root)
 	if err != nil {
@@ -148,15 +128,9 @@ func checkLiteralPorts(root string) doctorGroup {
 	return doctorGroup{title: "ports", lines: lines}
 }
 
-// checkBusyPorts probes every registered worktree's computed ports
-// (slots.BusyPorts, the same probe `ct create` runs before provisioning),
-// but only once its own compose stack is confirmed NOT running — a running
-// stack is expected to hold every one of its own ports, so that's success
-// (an informational ✓), not a conflict; probing anyway would just rediscover
-// the worktree's own containers and misreport them as a collision with
-// something else. Plus slot 0's (main's) base values as a ⚠ only: main
-// legitimately running its own compose stack on those ports isn't a
-// problem, and main has no per-worktree stack of its own to check against.
+// checkBusyPorts also checks slot 0 (main), but only ever as a ⚠: main may
+// legitimately run its own compose stack on those ports, and has no
+// per-worktree stack to check a busy finding against.
 func checkBusyPorts(root string, cfg *config.Config, reg *slots.Registry) doctorGroup {
 	if len(cfg.Ports) == 0 {
 		return doctorGroup{title: "busy ports", lines: []doctorLine{{sevOK, "no ports configured"}}}
@@ -181,16 +155,13 @@ func checkBusyPorts(root string, cfg *config.Config, reg *slots.Registry) doctor
 }
 
 // busyPortsLineForWorktree resolves one registered worktree's busy-ports
-// line, ok=false meaning nothing worth reporting: its own compose stack's
-// container count (composeRunningCount, same seam as list's Containers
-// column) decides how a busy finding is judged — running (count > 0) short-
-// circuits straight to an informational ✓ without probing ports at all (a
-// busy port explained by the worktree's own stack isn't a finding); NOT
-// running (confirmed count == 0) still probes ports, and a hit is a genuine
-// external conflict (✗); when docker/compose can't answer at all (count,
-// ok := ..., !ok — docker missing, compose erroring), a busy finding can't
-// be told apart from "it's just this worktree's own stack" so it is
-// downgraded to a ⚠ instead of a ✗ rather than risk a false failure.
+// line; ok=false means nothing worth reporting. A running stack (count >
+// 0) short-circuits to an informational ✓ without probing ports at all —
+// a busy port explained by the worktree's own stack isn't a finding. A
+// confirmed-not-running stack (count == 0) still probes ports, and a hit
+// is a genuine external conflict (✗). When docker/compose can't answer at
+// all (!ok), a busy finding can't be told apart from the worktree's own
+// stack, so it's downgraded to a ⚠ instead of a ✗.
 func busyPortsLineForWorktree(worktreesDir, repo, name string, slot int, cfg *config.Config) (doctorLine, bool) {
 	dir := filepath.Join(worktreesDir, name)
 	project := composeProjectName(repo, name)
@@ -212,14 +183,9 @@ func busyPortsLineForWorktree(worktreesDir, repo, name string, slot int, cfg *co
 	return doctorLine{sev, fmt.Sprintf("%s (slot %d): busy ports: %s", name, slot, strings.Join(busy, ", "))}, true
 }
 
-// checkOrphanSlots flags both directions of registry/worktree-dir drift: a
-// registry entry whose worktree directory no longer exists (✗ — `ct list`
-// and friends would misbehave against a slot with nothing behind it), and a
-// directory inside worktrees_dir that isn't registered (⚠ — e.g. `git
-// worktree add` run by hand, bypassing `ct create`). Symlinked
-// files.symlink_siblings entries are never flagged: os.ReadDir reports a
-// symlink's own entry type, so IsDir() is false for them regardless of what
-// they point at.
+// checkOrphanSlots never flags symlinked files.symlink_siblings entries:
+// os.ReadDir reports a symlink's own entry type, so IsDir() is false for
+// them regardless of what they point at.
 func checkOrphanSlots(cfg *config.Config, reg *slots.Registry) doctorGroup {
 	registered := reg.Slots()
 
@@ -249,16 +215,9 @@ func checkOrphanSlots(cfg *config.Config, reg *slots.Registry) doctorGroup {
 	return doctorGroup{title: "orphan slots", lines: lines}
 }
 
-// checkOrphanStacks flags docker compose projects belonging to this repo
-// (matching composeProjectName's <repo>-<name> prefix) that no longer
-// correspond to any registered worktree — the residue left behind when a
-// worktree dir is deleted without its compose stack (containers, volumes,
-// network) ever being torn down first. A project outside that prefix isn't
-// this repo's concern at all, and the bare repo project (main's own,
-// unprefixed, per composeProjectName) is never flagged. Docker being
-// unavailable entirely (composeProjects erroring) collapses to a single ⚠ —
-// same reasoning as busy ports' composeRunner probe: "couldn't tell" must
-// not be misreported as a finding.
+// checkOrphanStacks flags docker compose projects matching this repo's
+// prefix that no longer correspond to any registered worktree. The bare
+// repo project (main's own, unprefixed) is never flagged.
 func checkOrphanStacks(root string, reg *slots.Registry) doctorGroup {
 	repo := filepath.Base(root)
 
@@ -287,8 +246,6 @@ func checkOrphanStacks(root string, reg *slots.Registry) doctorGroup {
 	return doctorGroup{title: "orphan stacks", lines: lines}
 }
 
-// checkHooks verifies every configured hook path exists and is executable.
-// An unconfigured hook (empty path) is a no-op, same as internal/hooks.Run.
 func checkHooks(root string, cfg *config.Config) doctorGroup {
 	var lines []doctorLine
 	if line, ok := checkHookPath("post_create", hookAbsPath(root, cfg.Hooks.PostCreate)); !ok {
@@ -304,9 +261,8 @@ func checkHooks(root string, cfg *config.Config) doctorGroup {
 	return doctorGroup{title: "hooks", lines: lines}
 }
 
-// checkHookPath reports whether the hook at absPath (already resolved by
-// hookAbsPath; "" means unconfigured) exists and has an executable bit set.
-// ok is true when there's nothing to report.
+// checkHookPath: "" means unconfigured. ok is true when there's nothing to
+// report.
 func checkHookPath(label, absPath string) (doctorLine, bool) {
 	if absPath == "" {
 		return doctorLine{}, true
@@ -322,11 +278,8 @@ func checkHookPath(label, absPath string) (doctorLine, bool) {
 	return doctorLine{}, true
 }
 
-// checkDNS flags, for every registered worktree, a missing /etc/hosts
-// entry — as a ⚠, not a ✗: `ct hosts` already treats an unmanaged line
-// bound to the same dns as good enough, and DNS is optional infrastructure
-// (create still succeeds without it). Skipped entirely when dns_pattern is
-// unset — there's nothing to check.
+// checkDNS flags a missing /etc/hosts entry as a ⚠, not a ✗: an unmanaged
+// line already bound to the same dns counts as good enough.
 func checkDNS(cfg *config.Config, reg *slots.Registry) doctorGroup {
 	if cfg.DNSPattern == "" {
 		return doctorGroup{title: "dns", lines: []doctorLine{{sevOK, "dns_pattern not set — skipped"}}}
@@ -362,8 +315,6 @@ func checkDNS(cfg *config.Config, reg *slots.Registry) doctorGroup {
 	return doctorGroup{title: "dns", lines: lines}
 }
 
-// sortedRegistryNames returns reg's registered worktree names, sorted, so
-// every check's output order is stable.
 func sortedRegistryNames(reg *slots.Registry) []string {
 	slotByName := reg.Slots()
 	names := make([]string, 0, len(slotByName))
@@ -374,8 +325,6 @@ func sortedRegistryNames(reg *slots.Registry) []string {
 	return names
 }
 
-// anyFailed reports whether any line across every group is a ✗ — the sole
-// condition under which `ct doctor` exits 1.
 func anyFailed(groups []doctorGroup) bool {
 	for _, g := range groups {
 		for _, l := range g.lines {
@@ -387,9 +336,6 @@ func anyFailed(groups []doctorGroup) bool {
 	return false
 }
 
-// printDoctorGroups renders groups as plain grouped lines — not a table:
-// one "<title>:" header per group, its lines indented 2 spaces with a
-// leading ✓/✗/⚠ mark, and one blank line between groups.
 func printDoctorGroups(w io.Writer, groups []doctorGroup) {
 	for i, g := range groups {
 		if i > 0 {

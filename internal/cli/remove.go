@@ -59,9 +59,9 @@ var removeCmd = &cobra.Command{
 			return fmt.Errorf("%q is the main repository, not a worktree", name)
 		}
 
-		// pre_remove runs first, before anything is torn down — the repo's
-		// escape hatch for cleanup that must see the instance still intact
-		// (e.g. reading its DB before the compose stack goes away).
+		// pre_remove runs before the compose stack (and everything else) is
+		// torn down, so a hook needing the instance still intact (e.g.
+		// reading its DB) still can.
 		if slot, ok := reg.Slot(name); ok {
 			vars := cfg.InstanceVars(name, slot)
 			if err := hooks.Run(hookAbsPath(root, cfg.Hooks.PreRemove), wt.Path, hooks.Env(name, slot, vars["dns"], wt.Path, cfg.PortValues(slot))); err != nil {
@@ -92,11 +92,9 @@ var removeCmd = &cobra.Command{
 }
 
 // removeCloneCoWDsts deletes every files.clone_cow destination templated
-// for name/slot, printing what it removed. clone_cow destinations
-// typically live outside the worktree itself (a sibling datadir), so
-// gitwt.Remove doesn't reach them. A missing destination is not an
-// error — it may never have been created, or already removed by a prior
-// failed create's rollback.
+// for name/slot. clone_cow destinations typically live outside the
+// worktree itself, so gitwt.Remove doesn't reach them. A missing
+// destination is not an error.
 func removeCloneCoWDsts(cfg *config.Config, name string, slot int) {
 	vars := cfg.InstanceVars(name, slot)
 	for _, cc := range cfg.Files.CloneCoW {
@@ -112,20 +110,17 @@ func removeCloneCoWDsts(cfg *config.Config, name string, slot int) {
 	}
 }
 
-// forceRemoveWorktree removes the worktree at path (registered against
-// root) and guarantees it's gone afterward, even on a half-broken instance
-// where the directory was already deleted by hand or gitwt.Remove otherwise
-// fails to fully clean up. Shared by `ct remove` and `ct create`'s rollback
-// so worktree-removal residue never diverges between the two callers.
+// forceRemoveWorktree removes the worktree at path and guarantees it's
+// gone afterward, even when the directory was already deleted by hand or
+// gitwt.Remove otherwise fails to fully clean up.
 //
 // force=false keeps git's safe default: a real failure (e.g. a dirty
 // worktree git itself refuses to touch) is propagated as-is, and nothing
-// is force-deleted. force=true (ct's default) means the caller already
-// consented to destroying whatever's there, so any gitwt.Remove error is
-// swallowed and the directory is force-deleted as a fallback — a dir
-// already absent is not an error. Either way, a final `git worktree prune`
-// clears any stale metadata left pointing at a directory that's now gone;
-// its own failure is likewise best-effort and never propagated.
+// is force-deleted. force=true means any gitwt.Remove error is swallowed
+// and the directory is force-deleted as a fallback — a dir already absent
+// is not an error. Either way, a final `git worktree prune` clears any
+// stale metadata; its own failure is likewise best-effort and never
+// propagated.
 func forceRemoveWorktree(root, path string, force bool) error {
 	err := gitwt.Remove(root, path, force)
 	if err != nil && !force {
@@ -140,9 +135,7 @@ func forceRemoveWorktree(root, path string, force bool) error {
 	return nil
 }
 
-// resolveNameOrSlot accepts either a worktree name or a slot number
-// (parity with the original worktree script). Slot 0 is the main repo and
-// can never be removed this way.
+// Slot 0 is the main repo and can never be removed this way.
 func resolveNameOrSlot(reg *slots.Registry, arg string) (string, error) {
 	slot, err := strconv.Atoi(arg)
 	if err != nil {
@@ -161,7 +154,6 @@ func resolveNameOrSlot(reg *slots.Registry, arg string) (string, error) {
 func init() {
 	// Defaults to true: every worktree created by `ct create` carries a
 	// generated .env, which git worktree remove otherwise refuses to
-	// remove as "untracked content" — clone-tree worktrees are disposable
-	// by design. Pass --force=false to fall back to git's safe default.
+	// remove as "untracked content".
 	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", true, "force removal of the worktree")
 }

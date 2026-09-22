@@ -9,8 +9,6 @@ import (
 	"github.com/luca-cattaneo/clone-tree/internal/hooks"
 )
 
-// writeScript writes an executable shell script fixture at dir/name and
-// returns its path.
 func writeScript(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)

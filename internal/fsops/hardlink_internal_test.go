@@ -65,10 +65,6 @@ func TestHardlink_GIVEN_crossDeviceErrorAfterPartialDirCreated_WHEN_linked_THEN_
 		t.Fatalf("Hardlink: %v", err)
 	}
 
-	// The recursive walk creates dst as a real directory (via MkdirAll)
-	// before hitting EXDEV on the first file; Hardlink must discard that
-	// partial real directory (not leave it sitting alongside/under the
-	// eventual symlink) and leave a clean symlink instead.
 	info, err := os.Lstat(dst)
 	if err != nil {
 		t.Fatalf("Lstat dst: %v", err)

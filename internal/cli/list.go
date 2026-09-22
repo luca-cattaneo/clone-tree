@@ -51,8 +51,6 @@ var listCmd = &cobra.Command{
 	},
 }
 
-// augmentListRows appends a Containers column (running container count for
-// each row's compose project) to rows built by listRows.
 func augmentListRows(repo string, rows [][]string) ([]string, [][]string) {
 	headers := []string{"Slot", "Name", "Branch", "Path", "Containers"}
 

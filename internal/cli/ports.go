@@ -59,8 +59,6 @@ var portsCmd = &cobra.Command{
 	},
 }
 
-// sortedPortVars returns the configured port var names, sorted, so table
-// columns render in a stable order.
 func sortedPortVars(ports map[string]config.Port) []string {
 	vars := make([]string, 0, len(ports))
 	for v := range ports {
@@ -70,8 +68,6 @@ func sortedPortVars(ports map[string]config.Port) []string {
 	return vars
 }
 
-// portVarValueRows builds the Var/Value rows for one worktree at slot, one
-// row per configured port var (in vars order).
 func portVarValueRows(cfg *config.Config, slot int, vars []string) [][]string {
 	values := cfg.PortValues(slot)
 	rows := make([][]string, len(vars))
@@ -81,8 +77,6 @@ func portVarValueRows(cfg *config.Config, slot int, vars []string) [][]string {
 	return rows
 }
 
-// portsRows builds the Slot/Name/<var>... rows for every registered
-// worktree plus the main repo at slot 0, sorted by slot ascending.
 func portsRows(slotByName map[string]int, cfg *config.Config, vars []string) [][]string {
 	type entry struct {
 		name string

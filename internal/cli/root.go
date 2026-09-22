@@ -1,4 +1,3 @@
-// Package cli wires the ct cobra commands.
 package cli
 
 import (
@@ -24,8 +23,7 @@ var rootCmd = &cobra.Command{
 var configPath string
 
 // hostsPath is the hosts file ct manages (normally hosts.DefaultPath, i.e.
-// /etc/hosts). A package-level var so tests can point it at a temp file
-// instead of touching the real system hosts file.
+// /etc/hosts).
 var hostsPath = hosts.DefaultPath
 
 func init() {
@@ -33,13 +31,10 @@ func init() {
 	rootCmd.AddCommand(createCmd, createConfigCmd, removeCmd, listCmd, startCmd, stopCmd, portsCmd, hostsCmd, doctorCmd)
 }
 
-// Execute runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
 }
 
-// resolveWorktree finds the worktree named name (registered under the main
-// repo containing cwd) and returns it.
 func resolveWorktree(cwd, name string) (gitwt.Worktree, error) {
 	worktrees, err := gitwt.List(cwd)
 	if err != nil {
@@ -56,9 +51,9 @@ func cwd() (string, error) {
 	return os.Getwd()
 }
 
-// hookAbsPath resolves a Hooks.PostCreate/PreRemove value (repo-root-
-// relative, e.g. ".clone-tree/hooks/post-create.sh") to an absolute path.
-// An empty rel is kept empty so hooks.Run's no-op-when-empty contract holds.
+// hookAbsPath resolves a repo-root-relative hook path (e.g.
+// ".clone-tree/hooks/post-create.sh") to an absolute path. An empty rel is
+// kept empty, since hooks.Run treats "" as no-op.
 func hookAbsPath(root, rel string) string {
 	if rel == "" {
 		return ""

@@ -1,7 +1,5 @@
-// Package hooks runs the optional repo-local executables declared under
-// hooks: in .clone-tree/config.yaml (post_create, pre_remove). A hook
-// receives the instance's env contract (see Env) and runs with the new
-// worktree as its working directory.
+// Package hooks runs a hook executable with the instance's env contract
+// (see Env) and the new worktree as its working directory.
 package hooks
 
 import (
@@ -13,11 +11,8 @@ import (
 	"strconv"
 )
 
-// Run executes the hook at hookPath (resolved by the caller — repo-root-
-// relative paths must already be joined to an absolute path) with cwd
-// wtPath, stdout/stderr inherited, and env appended to the current
-// process's environment. An empty hookPath is a no-op: hooks are optional.
-// A missing hookPath, or a non-zero exit, is an error.
+// Run executes the hook at hookPath, which must already be resolved to an
+// absolute path.
 func Run(hookPath string, wtPath string, env map[string]string) error {
 	if hookPath == "" {
 		return nil
@@ -51,8 +46,6 @@ func envLines(env map[string]string) []string {
 	return lines
 }
 
-// Env builds the env contract every hook receives (PLAN.md §3.1): CT_NAME,
-// CT_SLOT, CT_DNS, CT_WT_PATH, plus one NAME=value entry per port var.
 func Env(name string, slot int, dns, wtPath string, ports map[string]int) map[string]string {
 	env := make(map[string]string, len(ports)+4)
 	env["CT_NAME"] = name

@@ -11,15 +11,12 @@ import (
 	"strings"
 )
 
-// Registry is the in-memory, file-backed name->slot mapping for one
-// worktrees directory.
 type Registry struct {
 	path    string
 	entries map[string]int
 }
 
-// Load reads "<worktreesDir>/.slots". A missing file is not an error — it
-// means no worktree has been created yet — and yields an empty registry.
+// A missing file is not an error — it yields an empty registry.
 func Load(worktreesDir string) (*Registry, error) {
 	path := filepath.Join(worktreesDir, ".slots")
 
@@ -49,8 +46,6 @@ func Load(worktreesDir string) (*Registry, error) {
 	return &Registry{path: path, entries: entries}, nil
 }
 
-// Allocate assigns the lowest free slot in 1..maxSlots to name and persists
-// the registry.
 func (r *Registry) Allocate(name string, maxSlots int) (int, error) {
 	if slot, ok := r.entries[name]; ok {
 		return 0, fmt.Errorf("slots: %q is already registered at slot %d", name, slot)
@@ -69,9 +64,6 @@ func (r *Registry) Allocate(name string, maxSlots int) (int, error) {
 	return slot, nil
 }
 
-// NextFree returns the lowest free slot in 1..maxSlots without persisting
-// anything, so a caller (e.g. the busy-port probe in create) can inspect
-// the candidate slot's ports before committing to an allocation.
 func (r *Registry) NextFree(maxSlots int) (int, error) {
 	used := make(map[int]bool, len(r.entries))
 	for _, s := range r.entries {
@@ -85,20 +77,16 @@ func (r *Registry) NextFree(maxSlots int) (int, error) {
 	return 0, fmt.Errorf("slots: no free slot (max_slots=%d)", maxSlots)
 }
 
-// Free removes name from the registry and persists it. Freeing a name that
-// isn't registered is a no-op.
 func (r *Registry) Free(name string) error {
 	delete(r.entries, name)
 	return r.save()
 }
 
-// Slot returns the slot registered for name, if any.
 func (r *Registry) Slot(name string) (int, bool) {
 	slot, ok := r.entries[name]
 	return slot, ok
 }
 
-// Name resolves a slot number back to its registered name.
 func (r *Registry) Name(slot int) (string, bool) {
 	for name, s := range r.entries {
 		if s == slot {
@@ -108,7 +96,6 @@ func (r *Registry) Name(slot int) (string, bool) {
 	return "", false
 }
 
-// Slots returns a copy of the full name->slot mapping.
 func (r *Registry) Slots() map[string]int {
 	out := make(map[string]int, len(r.entries))
 	for k, v := range r.entries {

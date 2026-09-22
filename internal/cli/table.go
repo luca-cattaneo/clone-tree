@@ -24,8 +24,8 @@ func renderTable(w io.Writer, bold bool, headers []string, rows [][]string) {
 	_, _ = fmt.Fprintln(w)
 }
 
-// columnWidths computes each column's width as max(header length, longest
-// row value length), counted in runes so unicode names size correctly.
+// columnWidths counts rune length, not byte length, so unicode names size
+// correctly.
 func columnWidths(headers []string, rows [][]string) []int {
 	widths := make([]int, len(headers))
 	for i, h := range headers {
@@ -41,8 +41,6 @@ func columnWidths(headers []string, rows [][]string) []int {
 	return widths
 }
 
-// underlineRow builds a `─` row where each column is repeated to its exact
-// width.
 func underlineRow(widths []int) []string {
 	row := make([]string, len(widths))
 	for i, wd := range widths {
@@ -63,7 +61,6 @@ func writeTableRow(w io.Writer, cells []string, widths []int, bold bool) {
 	_, _ = fmt.Fprintln(w, line)
 }
 
-// stdoutIsTTY reports whether os.Stdout is attached to a terminal.
 func stdoutIsTTY() bool {
 	info, err := os.Stdout.Stat()
 	if err != nil {

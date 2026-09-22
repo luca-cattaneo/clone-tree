@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 )
 
-// Copy copies src to dst, recursively when src is a directory, preserving
-// file modes. A missing src is not an error (see warnMissing).
 func Copy(src, dst string) error {
 	info, err := os.Lstat(src)
 	if errors.Is(err, os.ErrNotExist) {

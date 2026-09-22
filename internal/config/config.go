@@ -43,7 +43,6 @@ type Config struct {
 	Env          map[string]string `yaml:"env"`
 	Files        Files             `yaml:"files"`
 	Hooks        Hooks             `yaml:"hooks"`
-	// RepoRoot is not part of the YAML schema, it cache the calculated value to call urls
 	RepoRoot string `yaml:"-"`
 	// Maps a human label (e.g. "Web Client") to a URL template
     Urls map[string]string `yaml:"urls"`
@@ -56,7 +55,6 @@ const (
 	ansiReset  = "\033[0m"
 )
 
-// ScaffoldedError is returned by Load when no config existed for the repo
 type ScaffoldedError struct {
 	Path string
 }

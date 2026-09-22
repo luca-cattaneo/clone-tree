@@ -15,9 +15,6 @@ import (
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
 
-// newCreateFixtureRepo creates a git repository named "repo" inside a fresh
-// projects directory (projectsDir/repo), with a single initial commit on
-// main. It returns the projects dir and the repo dir.
 func newCreateFixtureRepo(t *testing.T) (projectsDir, repoDir string) {
 	t.Helper()
 
@@ -53,9 +50,6 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// chdir switches the process cwd to dir for the duration of the test
-// (createCmd resolves its repo root from os.Getwd via cwd()), restoring
-// the original cwd on cleanup.
 func chdir(t *testing.T, dir string) {
 	t.Helper()
 	orig, err := os.Getwd()
@@ -107,10 +101,8 @@ func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollb
 	}
 
 	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
-	// A subdirectory of worktreesDir stripped of write permission: forces
-	// the symlink creation itself to fail (EACCES) after clone_cow has
-	// already succeeded, without blocking gitwt.Create's own writes into
-	// worktreesDir/feature (a sibling, unaffected, entry).
+	// Stripped of write permission below, to force the symlink creation
+	// itself to fail (EACCES) after clone_cow has already succeeded.
 	blockedDir := filepath.Join(worktreesDir, "blocked")
 	if err := os.MkdirAll(blockedDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll blockedDir: %v", err)
@@ -205,11 +197,9 @@ func TestCreate_GIVEN_candidateSlotPortAlreadyBusy_WHEN_created_THEN_errorsAndNo
 func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndSymlinkApplied(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 
-	// files.copy source, gitignored in a real repo but plain here.
 	if err := os.WriteFile(filepath.Join(repoDir, "conf.local"), []byte("local-conf"), 0o644); err != nil {
 		t.Fatalf("WriteFile conf.local: %v", err)
 	}
-	// files.ide source.
 	ideaSrc := filepath.Join(repoDir, ".idea")
 	if err := os.MkdirAll(ideaSrc, 0o755); err != nil {
 		t.Fatalf("MkdirAll .idea: %v", err)
@@ -217,7 +207,6 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	if err := os.WriteFile(filepath.Join(ideaSrc, "workspace.xml"), []byte("<xml/>"), 0o644); err != nil {
 		t.Fatalf("WriteFile workspace.xml: %v", err)
 	}
-	// files.hardlink source.
 	vendorSrc := filepath.Join(repoDir, "vendor")
 	if err := os.MkdirAll(vendorSrc, 0o755); err != nil {
 		t.Fatalf("MkdirAll vendor: %v", err)
@@ -225,7 +214,6 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	if err := os.WriteFile(filepath.Join(vendorSrc, "lib.php"), []byte("<?php"), 0o644); err != nil {
 		t.Fatalf("WriteFile lib.php: %v", err)
 	}
-	// clone_cow source.
 	dataSrc := filepath.Join(projectsDir, "data")
 	if err := os.MkdirAll(dataSrc, 0o755); err != nil {
 		t.Fatalf("MkdirAll dataSrc: %v", err)
@@ -233,8 +221,6 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	if err := os.WriteFile(filepath.Join(dataSrc, "seed.txt"), []byte("seed"), 0o644); err != nil {
 		t.Fatalf("WriteFile seed.txt: %v", err)
 	}
-	// symlink_siblings source: must exist under projectsDir for the sibling
-	// link to be created.
 	if err := os.MkdirAll(filepath.Join(projectsDir, "sibling"), 0o755); err != nil {
 		t.Fatalf("MkdirAll sibling source: %v", err)
 	}
@@ -308,8 +294,6 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	}
 }
 
-// gitRevParse runs `git rev-parse ref` in dir and returns the trimmed
-// output (a commit hash).
 func gitRevParse(t *testing.T, dir, ref string) string {
 	t.Helper()
 	cmd := exec.Command("git", "rev-parse", ref)
@@ -324,8 +308,8 @@ func gitRevParse(t *testing.T, dir, ref string) string {
 func TestCreate_GIVEN_noBaseBranchInConfig_WHEN_created_THEN_newBranchTipMatchesDetectedMain(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 
-	// Move HEAD off main onto another branch with an extra commit, so a
-	// naive "branch from HEAD" would diverge from main's tip.
+	// Moves HEAD off main so a naive "branch from HEAD" would diverge from
+	// main's tip.
 	runGit(t, repoDir, "checkout", "-b", "wip")
 	if err := os.WriteFile(filepath.Join(repoDir, "extra.txt"), []byte("extra\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile extra.txt: %v", err)
@@ -364,8 +348,6 @@ func TestCreate_GIVEN_noBaseBranchInConfig_WHEN_created_THEN_newBranchTipMatches
 	}
 }
 
-// writeHookScript writes an executable shell script fixture at dir/name and
-// returns its path.
 func writeHookScript(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -428,9 +410,8 @@ func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResi
 	target := filepath.Join(projectsDir, "repo-worktrees", "feature")
 	wantProject := composeProjectName("repo", "feature")
 
-	// Records the order composeRunner's "down" call and the worktree dir's
-	// disappearance happen in: compose must come down while target still
-	// exists, i.e. before the worktree dir is removed.
+	// True only if "down" was called while target still existed: compose
+	// must come down before the worktree dir is removed.
 	var downCalledWithDirStillPresent bool
 	var downCalls []struct{ dir, project string }
 	stubComposeRunner(t, func(dir, project string, args ...string) ([]byte, error) {

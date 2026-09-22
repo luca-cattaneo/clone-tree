@@ -81,8 +81,7 @@ func TestPortsCmd_GIVEN_fixtureRepoWithPortsAndRegisteredWorktree_WHEN_runWithou
 	_, repoDir := newCreateFixtureRepo(t)
 
 	// Pick a base whose slot-1 value (base+10) lands on a currently-free
-	// port, mirroring TestCreate_GIVEN_candidateSlotPortAlreadyBusy's
-	// approach: create's busy-port probe would otherwise abort
+	// port: create's busy-port probe would otherwise abort
 	// nondeterministically depending on what's already listening on the
 	// dev machine.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -125,8 +124,6 @@ func TestPortsCmd_GIVEN_fixtureRepoWithPortsAndRegisteredWorktree_WHEN_runWithou
 	if err := portsCmd.RunE(portsCmd, []string{"nonexistent"}); err == nil {
 		t.Fatalf("expected error for unregistered worktree name")
 	}
-	// Parity with the original worktree script's cmd_ports: "<name|slot>" — a slot
-	// number must resolve to its registered worktree, same as a name.
 	if err := portsCmd.RunE(portsCmd, []string{"1"}); err != nil {
 		t.Fatalf("ports by slot number: %v", err)
 	}

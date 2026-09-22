@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// buildTree writes a small nested file tree under root for CloneCoW tests.
 func buildTree(t *testing.T, root string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "nested"), 0o755); err != nil {

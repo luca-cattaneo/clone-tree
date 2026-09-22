@@ -211,7 +211,6 @@ func TestNextFree_GIVEN_slotOneTaken_WHEN_computed_THEN_returnsLowestFreeWithout
 		t.Fatalf("got slot %d, want 2", slot)
 	}
 
-	// Calling it again must return the same answer — nothing was persisted.
 	again, err := reg.NextFree(9)
 	if err != nil {
 		t.Fatalf("NextFree (again): %v", err)
@@ -249,7 +248,7 @@ func TestBusyPorts_GIVEN_aPortWithAnActiveListener_WHEN_probed_THEN_reportedBusy
 		t.Fatalf("Listen: %v", err)
 	}
 	freePort := freeLn.Addr().(*net.TCPAddr).Port
-	freeLn.Close() // released, should be free again for the probe
+	freeLn.Close()
 
 	busy := slots.BusyPorts(map[string]int{
 		"BUSY_PORT": busyPort,

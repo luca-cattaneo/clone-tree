@@ -102,7 +102,6 @@ func TestRemoveCloneCoWDsts_GIVEN_missingDst_WHEN_called_THEN_noopWithoutError(t
 		},
 	}
 
-	// Must not panic or write anything for an already-absent destination.
 	removeCloneCoWDsts(cfg, "feature", 1)
 }
 
@@ -149,9 +148,8 @@ func TestRemove_GIVEN_worktreeDirManuallyDeleted_WHEN_removed_THEN_cleansSlotAnd
 		t.Fatalf("create: %v", err)
 	}
 
-	// Simulate the real-world residue: the worktree directory was deleted by
-	// hand (rm -rf) instead of via `ct remove`, leaving stale slot-registry
-	// and git-worktree-metadata entries behind.
+	// Deleted by hand (rm -rf) rather than via `ct remove`, leaving stale
+	// slot-registry and git-worktree-metadata entries behind.
 	target := filepath.Join(projectsDir, "repo-worktrees", "feature")
 	if err := os.RemoveAll(target); err != nil {
 		t.Fatalf("simulate manual deletion: %v", err)

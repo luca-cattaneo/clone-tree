@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// Worktree describes one entry from `git worktree list --porcelain`.
 type Worktree struct {
 	Path     string
 	Branch   string
@@ -18,8 +17,7 @@ type Worktree struct {
 }
 
 // ParsePorcelain parses the output of `git worktree list --porcelain` into
-// a slice of Worktree. It is a pure function so it is exhaustively
-// unit-testable without a real git repo.
+// a slice of Worktree.
 func ParsePorcelain(output string) []Worktree {
 	var result []Worktree
 	var cur *Worktree
@@ -58,7 +56,6 @@ func ParsePorcelain(output string) []Worktree {
 	return result
 }
 
-// List returns all worktrees registered against the main repo containing dir.
 func List(dir string) ([]Worktree, error) {
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = dir
@@ -71,7 +68,6 @@ func List(dir string) ([]Worktree, error) {
 	return ParsePorcelain(stdout.String()), nil
 }
 
-// FindByName returns the worktree whose path basename matches name.
 func FindByName(worktrees []Worktree, name string) (Worktree, bool) {
 	for _, wt := range worktrees {
 		if filepath.Base(wt.Path) == name {
@@ -81,7 +77,6 @@ func FindByName(worktrees []Worktree, name string) (Worktree, bool) {
 	return Worktree{}, false
 }
 
-// refExists reports whether ref exists in the repo at dir.
 func refExists(dir, ref string) (bool, error) {
 	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", ref)
 	cmd.Dir = dir
@@ -96,19 +91,14 @@ func refExists(dir, ref string) (bool, error) {
 	return false, err
 }
 
-// BranchExists reports whether refs/heads/<branch> exists in the repo at dir.
 func BranchExists(dir, branch string) (bool, error) {
 	return refExists(dir, "refs/heads/"+branch)
 }
 
-// RemoteBranchExists reports whether refs/remotes/origin/<branch> exists in
-// the repo at dir.
 func RemoteBranchExists(dir, branch string) (bool, error) {
 	return refExists(dir, "refs/remotes/origin/"+branch)
 }
 
-// baseStartPoint returns "origin/<base>" if that remote ref exists, else
-// base itself, for use as the start-point of a new branch.
 func baseStartPoint(dir, base string) (string, error) {
 	remoteExists, err := RemoteBranchExists(dir, base)
 	if err != nil {
@@ -120,12 +110,6 @@ func baseStartPoint(dir, base string) (string, error) {
 	return base, nil
 }
 
-// Create adds a new worktree at path for branch. If branch does not exist
-// locally, it fetches origin/<branch> (and origin/<base> in the same
-// best-effort call, ignoring fetch errors, e.g. no remote configured or
-// offline) and, when the remote branch exists, creates branch tracking it;
-// otherwise it creates branch from base — starting from origin/<base> when
-// that remote ref exists, else from the local base ref.
 func Create(dir, path, branch, base string) error {
 	exists, err := BranchExists(dir, branch)
 	if err != nil {
@@ -143,6 +127,7 @@ func Create(dir, path, branch, base string) error {
 		}
 		fetchCmd := exec.Command("git", fetchArgs...)
 		fetchCmd.Dir = dir
+		// Best-effort: ignore fetch errors, e.g. no remote configured or offline.
 		_ = fetchCmd.Run()
 
 		remoteExists, err := RemoteBranchExists(dir, branch)
@@ -169,7 +154,6 @@ func Create(dir, path, branch, base string) error {
 	return nil
 }
 
-// Remove removes the worktree at path.
 func Remove(dir, path string, force bool) error {
 	args := []string{"worktree", "remove"}
 	if force {
@@ -188,10 +172,8 @@ func Remove(dir, path string, force bool) error {
 }
 
 // Prune removes administrative metadata for worktrees whose working
-// directory no longer exists — e.g. one deleted by hand (rm -rf) instead of
-// via Remove, which Remove itself already tolerates but doesn't always
-// clean up after. Best-effort by design in every caller: a prune failure
-// must never block `ct remove`/`ct create`'s rollback from completing.
+// directory no longer exists, e.g. one deleted by hand instead of via
+// Remove.
 func Prune(dir string) error {
 	cmd := exec.Command("git", "worktree", "prune")
 	cmd.Dir = dir

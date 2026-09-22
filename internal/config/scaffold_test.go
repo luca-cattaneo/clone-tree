@@ -56,10 +56,6 @@ func readGeneratedConfig(t *testing.T, repo string) string {
 	return string(data)
 }
 
-// scaffoldAndParse scaffolds repo, then parses+validates the generated
-// config.yaml via LoadExisting against the written path (an explicit
-// --config-style override) — Scaffold itself now stops at "written to
-// disk", so tests that need the parsed Config go through this instead.
 func scaffoldAndParse(t *testing.T, repo string) *config.Config {
 	t.Helper()
 	path, err := config.Scaffold(repo)
@@ -131,9 +127,6 @@ services:
       - "${PROXY_HTTP_PORT}:80"
 `)
 
-	// An unresolved var makes the generated config itself invalid (see
-	// config.Validate), but Scaffold only writes the file — validation
-	// happens on the next Load, covered separately.
 	if _, err := config.Scaffold(repo); err != nil {
 		t.Fatalf("Scaffold: %v", err)
 	}
@@ -388,8 +381,6 @@ services:
     ports:
       - "${B_PORT:-2000}:2"
 `)
-	// COMPOSE_FILE deliberately omits docker-compose.yml, so only extra.yml
-	// (and its var) should be scanned.
 	writeFile(t, filepath.Join(repo, ".env"), "COMPOSE_FILE=extra.yml\n")
 
 	cfg := scaffoldAndParse(t, repo)
@@ -695,8 +686,6 @@ func TestScaffold_GIVEN_gitignoredCloneTreeDir_WHEN_scaffolded_THEN_excluded(t *
 	runGit(t, repo, "add", ".gitignore")
 	runGit(t, repo, "commit", "-m", "add gitignore")
 
-	// .clone-tree/ is created by Scaffold itself and must never be
-	// suggested back to itself.
 	if _, err := config.Scaffold(repo); err != nil {
 		t.Fatalf("Scaffold: %v", err)
 	}
@@ -768,7 +757,6 @@ services:
 		t.Fatalf("got %q, want it to name the var and the file to fix", err.Error())
 	}
 
-	// The file is still on disk for review even though it's invalid.
 	if _, statErr := os.Stat(filepath.Join(repo, ".clone-tree", "config.yaml")); statErr != nil {
 		t.Fatalf("expected the generated config to still be on disk for review: %v", statErr)
 	}
@@ -953,9 +941,6 @@ func TestDetectBaseBranch_GIVEN_neitherMainNorMaster_WHEN_detected_THEN_falseRet
 	}
 }
 
-// readGeneratedConfigAfterScaffold scaffolds repo and returns the raw
-// generated config.yaml text (unparsed — used by tests that only assert on
-// the rendered YAML, not the parsed Config).
 func readGeneratedConfigAfterScaffold(t *testing.T, repo string) string {
 	t.Helper()
 	if _, err := config.Scaffold(repo); err != nil {

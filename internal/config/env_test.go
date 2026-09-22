@@ -133,7 +133,7 @@ func TestWriteEnv_GIVEN_mainEnvExists_WHEN_written_THEN_inheritedMinusOverridden
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, ".env"), []byte(
 		"PINGCODE=99977\n"+
-			"DB_PORT=3306\n"+ // ct writes DB_PORT itself -> must be stripped
+			"DB_PORT=3306\n"+
 			"MACHINE_DNS=local.dev.example.com\n",
 	), 0o644); err != nil {
 		t.Fatalf("WriteFile main .env: %v", err)
@@ -182,7 +182,7 @@ func TestWriteEnv_GIVEN_mainEnvExists_WHEN_written_THEN_inheritedMinusOverridden
 }
 
 func TestWriteEnv_GIVEN_noMainEnv_WHEN_written_THEN_onlyCtBlockNoHeader(t *testing.T) {
-	repoRoot := t.TempDir() // no .env here
+	repoRoot := t.TempDir()
 
 	cfg := &config.Config{
 		RepoRoot: repoRoot,

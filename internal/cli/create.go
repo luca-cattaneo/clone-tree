@@ -37,7 +37,6 @@ var createCmd = &cobra.Command{
 
 		cfg, err := config.LoadExisting(root, configPath)
 		if errors.Is(err, config.ErrNoConfig) {
-			// No config yet: scaffold it and stop here.
 			return config.ScaffoldOrError(root)
 		}
 		if err != nil {
@@ -58,7 +57,6 @@ var createCmd = &cobra.Command{
 			}
 		}()
 
-		// Probe the candidate slot's ports before touching anything.
 		candidateSlot, err := reg.NextFree(cfg.MaxSlots)
 		if err != nil {
 			return err
@@ -147,7 +145,6 @@ var createCmd = &cobra.Command{
 			rollback = append(rollback, func() { _ = hosts.Remove(hostsPath, name) })
 		}
 
-		// The post_create hook to be executed first.
 		rollback = append(rollback, func() { _ = composeDown(target, composeProjectName(filepath.Base(root), name)) })
 
 		if err = hooks.Run(hookAbsPath(root, cfg.Hooks.PostCreate), target, hooks.Env(name, slot, vars["dns"], target, cfg.PortValues(slot))); err != nil {

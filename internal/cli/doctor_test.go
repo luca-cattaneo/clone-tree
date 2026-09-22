@@ -13,7 +13,6 @@ import (
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
 
-// runDoctorCmd runs doctorCmd.RunE, capturing its stdout report.
 func runDoctorCmd(t *testing.T) (string, error) {
 	t.Helper()
 
@@ -106,7 +105,6 @@ func TestDoctorCmd_GIVEN_orphanRegisteredSlot_WHEN_run_THEN_orphanSlotFails(t *t
 	if err != nil {
 		t.Fatalf("slots.Load: %v", err)
 	}
-	// Register a slot without ever creating the worktree directory itself.
 	if _, err := reg.Allocate("stale", 9); err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
@@ -121,11 +119,8 @@ func TestDoctorCmd_GIVEN_orphanRegisteredSlot_WHEN_run_THEN_orphanSlotFails(t *t
 	}
 }
 
-// dbPortFixture creates a fixture repo with a single-var config (DB_PORT,
-// whose slot-1 value is the returned port), and registers "feature" at
-// slot 1 while that port is still free — create's own busy-port probe
-// would otherwise abort the whole create. The caller decides afterwards
-// whether/how to bind slot1Port and how to stub composeRunner.
+// dbPortFixture registers "feature" at slot 1 while its DB_PORT is still
+// free — create's own busy-port probe would otherwise abort the create.
 func dbPortFixture(t *testing.T) (repoDir string, slot1Port int) {
 	t.Helper()
 	_, repoDir = newCreateFixtureRepo(t)
@@ -164,8 +159,6 @@ func dbPortFixture(t *testing.T) (repoDir string, slot1Port int) {
 	return repoDir, slot1Port
 }
 
-// stubComposeRunner overrides the composeRunner seam for the duration of
-// the test, restoring it on cleanup.
 func stubComposeRunner(t *testing.T, fn func(dir, project string, args ...string) ([]byte, error)) {
 	t.Helper()
 	orig := composeRunner
@@ -176,8 +169,6 @@ func stubComposeRunner(t *testing.T, fn func(dir, project string, args ...string
 func TestDoctorCmd_GIVEN_stackNotRunningAndPortBusy_WHEN_run_THEN_busyPortFails(t *testing.T) {
 	_, slot1Port := dbPortFixture(t)
 
-	// composeRunner confirms zero running containers (no error, empty
-	// output) — a genuine external conflict, so busy must fail.
 	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
 		return nil, nil
 	})
@@ -201,14 +192,12 @@ func TestDoctorCmd_GIVEN_stackNotRunningAndPortBusy_WHEN_run_THEN_busyPortFails(
 func TestDoctorCmd_GIVEN_stackRunning_WHEN_run_THEN_informationalOKAndPortsNotProbed(t *testing.T) {
 	_, slot1Port := dbPortFixture(t)
 
-	// composeRunner reports 2 running containers for feature's own stack.
 	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
 		return []byte("abc123\ndef456\n"), nil
 	})
 
-	// Bind the exact port anyway: proves a running stack short-circuits
-	// straight to the informational ✓ instead of probing ports at all —
-	// if it probed, this would show up as a busy-port ✗/⚠.
+	// Bind the exact port anyway: proves a running stack short-circuits to
+	// the informational ✓ without probing ports at all.
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", slot1Port))
 	if err != nil {
 		t.Fatalf("re-Listen on %d: %v", slot1Port, err)
@@ -231,9 +220,6 @@ func TestDoctorCmd_GIVEN_stackRunning_WHEN_run_THEN_informationalOKAndPortsNotPr
 func TestDoctorCmd_GIVEN_dockerUnavailableAndPortBusy_WHEN_run_THEN_busyPortWarnsNotFails(t *testing.T) {
 	_, slot1Port := dbPortFixture(t)
 
-	// composeRunner can't answer at all (docker missing/erroring) — a busy
-	// port can't be told apart from "it's just this worktree's own stack",
-	// so it must warn, not fail.
 	stubComposeRunner(t, func(_, _ string, _ ...string) ([]byte, error) {
 		return nil, errors.New("docker: command not found")
 	})
@@ -310,7 +296,6 @@ func TestDoctorCmd_GIVEN_dockerUnavailable_WHEN_run_THEN_orphanStacksWarnsNotFai
 
 func TestDoctorCmd_GIVEN_missingPostCreateHook_WHEN_run_THEN_hookCheckFails(t *testing.T) {
 	_, repoDir := newCreateFixtureRepo(t)
-	// hooks.post_create points at a script that is never written.
 	yaml := "version: 1\n" +
 		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +

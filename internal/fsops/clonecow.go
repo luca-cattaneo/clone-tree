@@ -8,13 +8,8 @@ import (
 	"runtime"
 )
 
-// cloneCoWCommand returns the platform-specific copy-on-write reflink
-// clone command for src -> dst, or nil on a platform with no such command.
-// `cp -Rc` (darwin/APFS) and `cp -R --reflink=auto` (linux/btrfs,xfs) both
-// share blocks with the source instead of duplicating them, so cloning a
-// multi-GB datadir takes seconds instead of minutes; `--reflink=auto`
-// degrades to a plain copy internally when the filesystem doesn't support
-// reflinks.
+// `--reflink=auto` degrades to a plain copy internally when the filesystem
+// doesn't support reflinks.
 func cloneCoWCommand(src, dst string) *exec.Cmd {
 	switch runtime.GOOS {
 	case "darwin":
@@ -26,18 +21,10 @@ func cloneCoWCommand(src, dst string) *exec.Cmd {
 	}
 }
 
-// runCommand executes cmd. Package-level so tests can substitute a failing
-// implementation and exercise the plain-Copy fallback without needing a
-// real non-reflink-capable filesystem.
 var runCommand = func(cmd *exec.Cmd) error {
 	return cmd.Run()
 }
 
-// CloneCoW clones src to dst using the platform's copy-on-write reflink
-// command, falling back to a plain recursive Copy when the platform has no
-// such command or the command fails (e.g. filesystem without reflink
-// support). dst must not already exist — CloneCoW never clobbers existing
-// data.
 func CloneCoW(src, dst string) error {
 	if _, err := os.Lstat(dst); err == nil {
 		return fmt.Errorf("fsops: clone_cow destination already exists: %s", dst)

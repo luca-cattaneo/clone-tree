@@ -8,25 +8,12 @@ import (
 	"syscall"
 )
 
-// errCrossDevice signals that src and dst live on different devices
-// (os.Link failed with EXDEV) partway through a recursive hardlink walk.
-// It is never wrapped, so errors.Is sees it all the way up through
-// hardlinkDir/hardlinkPath to Hardlink, which then discards whatever
-// partial dst tree was built and symlinks the whole src dir instead.
+// errCrossDevice signals that os.Link failed with EXDEV (src and dst live
+// on different devices).
 var errCrossDevice = errors.New("fsops: cross-device link")
 
-// osLink is os.Link, indirected so tests can inject an EXDEV-shaped error
-// without needing two real devices.
 var osLink = os.Link
 
-// Hardlink links src into dst, recursively when src is a directory:
-// directories are created fresh (hardlinking a directory isn't portable),
-// regular files are hardlinked with os.Link. When src and dst live on
-// different devices, os.Link fails with EXDEV — clone-tree then discards
-// any partial dst tree and symlinks the whole src dir instead (a copy of a
-// large gitignored tree, e.g. vendor/, across devices would defeat the
-// point of hardlinking it in the first place). A missing src is not an
-// error (see warnMissing).
 func Hardlink(src, dst string) error {
 	info, err := os.Lstat(src)
 	if errors.Is(err, os.ErrNotExist) {

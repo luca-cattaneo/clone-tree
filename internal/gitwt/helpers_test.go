@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// newFixtureRepo creates a git repository in a fresh temp directory with a
-// single initial commit on the default branch, and returns its path.
 func newFixtureRepo(t *testing.T) string {
 	t.Helper()
 
@@ -38,7 +36,6 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// runGitOutput runs git in dir and returns its trimmed stdout.
 func runGitOutput(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)

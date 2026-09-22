@@ -71,9 +71,6 @@ type rawBinding struct {
 	sourceFile    string
 }
 
-// scanComposePorts discovers every host-port binding for root's compose
-// files, resolves each ${VAR} binding against <root>/.env into one
-// scaffoldPort per distinct var.
 func scanComposePorts(root string, maxSlots int) (ports []scaffoldPort, literalComments []string, discovery string, err error) {
 	files, err := composeFiles(root)
 	if err != nil {
@@ -94,8 +91,6 @@ type LiteralBinding struct {
 	Port    int
 }
 
-// ScanLiteralPortBindings discovers every non-${VAR}-parameterized host-port
-// binding in root's compose files.
 func ScanLiteralPortBindings(root string) ([]LiteralBinding, error) {
 	files, err := composeFiles(root)
 	if err != nil {
@@ -115,7 +110,6 @@ func ScanLiteralPortBindings(root string) ([]LiteralBinding, error) {
 	return out, nil
 }
 
-// composeFiles resolves the file list docker compose plus its matching override file.
 func composeFiles(root string) ([]string, error) {
 	dotenv, _ := parseDotEnv(filepath.Join(root, ".env"))
 	if raw, ok := dotenv["COMPOSE_FILE"]; ok && raw != "" {
@@ -142,8 +136,7 @@ func composeFiles(root string) ([]string, error) {
 }
 
 // defaultComposeFiles picks the first existing compose base file in
-// docker compose's own precedence order, plus its matching
-// "<base>.override.<ext>" when present.
+// docker compose's own precedence order.
 func defaultComposeFiles(root string) ([]string, error) {
 	var base string
 	for _, candidate := range []string{"compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"} {
@@ -190,7 +183,6 @@ func extractBindings(root string, files []string) ([]rawBinding, string) {
 	return extractBindingsFallback(files), "fallback yaml merge"
 }
 
-// parseComposeDoc extracts raw bindings from a single already-merged compose document.
 func parseComposeDoc(data []byte) ([]rawBinding, error) {
 	var doc composeFile
 	if err := yaml.Unmarshal(data, &doc); err != nil {
@@ -217,8 +209,6 @@ func parseComposeDoc(data []byte) ([]rawBinding, error) {
 	return raws, nil
 }
 
-// extractBindingsFallback merges each file's per-service ports declaration
-// in file order, then extracts raw bindings from the merged result.
 func extractBindingsFallback(files []string) []rawBinding {
 	type portItem struct {
 		node *yaml.Node
@@ -365,7 +355,6 @@ func parseBindingString(binding, sourceFile string) (rawBinding, bool) {
 	}
 }
 
-// resolvePorts resolves every ${VAR} raw binding against dotenv, then runs the cross-slot collision pass.
 func resolvePorts(raws []rawBinding, dotenv map[string]string, maxSlots int) []scaffoldPort {
 	var ports []scaffoldPort
 	seen := map[string]bool{}
@@ -384,9 +373,6 @@ func resolvePorts(raws []rawBinding, dotenv map[string]string, maxSlots int) []s
 	return ports
 }
 
-// literalPorts returns the distinct literal (non-parameterized) host ports
-// among raws. clone-tree never rewrites compose YAML, so these are bound
-// identically by main and every worktree.
 func literalPorts(raws []rawBinding) []int {
 	var lits []int
 	for _, rb := range raws {
@@ -397,9 +383,6 @@ func literalPorts(raws []rawBinding) []int {
 	return uniqueSortedInts(lits)
 }
 
-// literalPortComments groups literal (non-parameterized) host-port
-// bindings by owning service and renders one "cannot be
-// replicated" comment per service.
 func literalPortComments(raws []rawBinding) []string {
 	type group struct {
 		ports []int

@@ -243,7 +243,6 @@ func TestCreate_GIVEN_baseDiffersFromHEAD_WHEN_created_THEN_newBranchStartsFromB
 	}
 	runGit(t, repo, "add", "other.txt")
 	runGit(t, repo, "commit", "-m", "other commit")
-	// HEAD is now "other", ahead of main.
 
 	wtDir := repo + "-worktrees"
 	target := wtDir + "/feature"
@@ -276,8 +275,6 @@ func TestCreate_GIVEN_baseBranchAheadOnRemote_WHEN_created_THEN_startsFromRemote
 	runGit(t, repo, "config", "user.email", "test@example.com")
 	runGit(t, repo, "config", "user.name", "Test")
 
-	// Local main lags behind origin/main: Create must start the new branch
-	// from origin/main's tip, not local main's.
 	runGit(t, repo, "reset", "--hard", "HEAD~1")
 
 	wtDir := repo + "-worktrees"
