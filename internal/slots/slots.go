@@ -1,5 +1,5 @@
 // Package slots manages the name->slot registry backed by a flat
-// "<worktrees-dir>/.slots" file (one "name:slot" line per entry)
+// "<root>/.git/clone-tree/slots" file (one "name:slot" line per entry)
 package slots
 
 import (
@@ -17,8 +17,8 @@ type Registry struct {
 }
 
 // A missing file is not an error — it yields an empty registry.
-func Load(worktreesDir string) (*Registry, error) {
-	path := filepath.Join(worktreesDir, ".slots")
+func Load(root string) (*Registry, error) {
+	path := filepath.Join(root, ".git", "clone-tree", "slots")
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -117,7 +117,7 @@ func (r *Registry) save() error {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
-		return fmt.Errorf("create worktrees dir: %w", err)
+		return fmt.Errorf("create slots registry dir: %w", err)
 	}
 	if err := os.WriteFile(r.path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("write slots registry: %w", err)

@@ -13,7 +13,6 @@ func TestCompleteWorktreeNames_GIVEN_registeredWorktrees_WHEN_completedForFirstA
 	_, repoDir := newCreateFixtureRepo(t)
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +

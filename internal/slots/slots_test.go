@@ -260,9 +260,9 @@ func TestBusyPorts_GIVEN_aPortWithAnActiveListener_WHEN_probed_THEN_reportedBusy
 	}
 }
 
-func TestAllocate_GIVEN_worktreesDirDoesNotExistYet_WHEN_allocated_THEN_dirCreatedOnDemand(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "not-yet-created")
-	reg, err := slots.Load(dir)
+func TestAllocate_GIVEN_registryDirDoesNotExistYet_WHEN_allocated_THEN_dirCreatedOnDemand(t *testing.T) {
+	root := t.TempDir()
+	reg, err := slots.Load(root)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestAllocate_GIVEN_worktreesDirDoesNotExistYet_WHEN_allocated_THEN_dirCreat
 	if _, err := reg.Allocate("feature", 9); err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, ".slots")); statErr != nil {
-		t.Fatalf("expected .slots file to be created: %v", statErr)
+	if _, statErr := os.Stat(filepath.Join(root, ".git", "clone-tree", "slots")); statErr != nil {
+		t.Fatalf("expected slots registry file to be created: %v", statErr)
 	}
 }

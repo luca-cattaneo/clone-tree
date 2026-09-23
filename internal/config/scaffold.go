@@ -36,7 +36,7 @@ func Scaffold(root string) (string, error) {
 		return "", fmt.Errorf("scaffold: scan gitignored files: %w", err)
 	}
 
-	yamlText := renderScaffoldYAML(filepath.Base(root), baseBranch, ports, literalComments, files)
+	yamlText := renderScaffoldYAML(baseBranch, ports, literalComments, files)
 
 	path := filepath.Join(root, ".clone-tree", "config.yaml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -81,11 +81,10 @@ func promptBaseBranch() (string, error) {
 	return answer, nil
 }
 
-func renderScaffoldYAML(repoName, baseBranch string, ports []scaffoldPort, literalComments []string, files scaffoldFiles) string {
+func renderScaffoldYAML(baseBranch string, ports []scaffoldPort, literalComments []string, files scaffoldFiles) string {
 	var b strings.Builder
 	b.WriteString(scaffoldHeader)
 	b.WriteString("version: 1\n")
-	fmt.Fprintf(&b, "worktrees_dir: ../%s-worktrees\n", repoName)
 	fmt.Fprintf(&b, "base_branch: %s\n", baseBranch)
 	b.WriteString("# dns_pattern: per-worktree hostname, {name} = \"{name}.myapp.localhost\". Empty → localhost\n")
 	fmt.Fprintf(&b, "dns_pattern: %q\n", dnsScaffoldPattern)

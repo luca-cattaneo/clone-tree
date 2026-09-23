@@ -73,20 +73,27 @@ func TestRepoName_GIVEN_mainRepoDir_WHEN_resolved_THEN_returnsBasename(t *testin
 	}
 }
 
-func TestWorktreesDir_GIVEN_mainRepoDir_WHEN_resolved_THEN_returnsSiblingDir(t *testing.T) {
-	repo := newFixtureRepo(t)
+func TestWorktreePath_GIVEN_rootAndName_WHEN_resolved_THEN_siblingOfRootPrefixedByRepo(t *testing.T) {
+	got := gitwt.WorktreePath("/Projects/TagPay", "emailBug")
 
-	got, err := gitwt.WorktreesDir(repo)
-	if err != nil {
-		t.Fatalf("WorktreesDir: %v", err)
-	}
-
-	resolvedRepo, err := filepath.EvalSymlinks(repo)
-	if err != nil {
-		t.Fatalf("EvalSymlinks: %v", err)
-	}
-	want := filepath.Join(filepath.Dir(resolvedRepo), filepath.Base(resolvedRepo)+"-worktrees")
+	want := "/Projects/TagPay-emailBug"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestWorktreeName_GIVEN_ctWorktreePath_WHEN_resolved_THEN_prefixTrimmed(t *testing.T) {
+	got := gitwt.WorktreeName("/Projects/TagPay", "/Projects/TagPay-emailBug")
+
+	if got != "emailBug" {
+		t.Fatalf("got %q, want %q", got, "emailBug")
+	}
+}
+
+func TestWorktreeName_GIVEN_foreignWorktreePath_WHEN_resolved_THEN_basenameKept(t *testing.T) {
+	got := gitwt.WorktreeName("/Projects/TagPay", "/elsewhere/scratch")
+
+	if got != "scratch" {
+		t.Fatalf("got %q, want %q", got, "scratch")
 	}
 }

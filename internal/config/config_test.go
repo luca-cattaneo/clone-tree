@@ -23,11 +23,10 @@ func writeConfig(t *testing.T, root, body string) {
 	}
 }
 
-func TestLoadExisting_GIVEN_validConfig_WHEN_loaded_THEN_fieldsParsedAndWorktreesDirExpanded(t *testing.T) {
+func TestLoadExisting_GIVEN_validConfig_WHEN_loaded_THEN_fieldsParsed(t *testing.T) {
 	root := t.TempDir()
 	writeConfig(t, root, `
 version: 1
-worktrees_dir: ../{repo}-worktrees
 base_branch: main
 dns_pattern: "local-{name}.dev.example.com"
 max_slots: 5
@@ -48,10 +47,6 @@ env:
 	if cfg.MaxSlots != 5 {
 		t.Fatalf("got max_slots %d, want 5", cfg.MaxSlots)
 	}
-	want := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-worktrees")
-	if cfg.WorktreesDir != want {
-		t.Fatalf("got worktrees_dir %q, want %q", cfg.WorktreesDir, want)
-	}
 	if *cfg.Ports["DB_PORT"].Base != 3306 || cfg.Ports["DB_PORT"].Step != 10 {
 		t.Fatalf("got ports.DB_PORT %#v", cfg.Ports["DB_PORT"])
 	}
@@ -60,17 +55,16 @@ env:
 	}
 }
 
-func TestLoadExisting_GIVEN_absoluteWorktreesDir_WHEN_loaded_THEN_keptAsIs(t *testing.T) {
+func TestLoadExisting_GIVEN_legacyUnknownKeys_WHEN_loaded_THEN_ignored(t *testing.T) {
 	root := t.TempDir()
-	abs := t.TempDir()
-	writeConfig(t, root, "version: 1\nworktrees_dir: "+abs+"\nbase_branch: main\nmax_slots: 1\n")
+	writeConfig(t, root, "version: 1\nworktrees_dir: ../repo-worktrees\nbase_branch: main\nmax_slots: 1\nfiles:\n  symlink_siblings: [OtherRepo]\n")
 
 	cfg, err := config.LoadExisting(root, "")
 	if err != nil {
 		t.Fatalf("LoadExisting: %v", err)
 	}
-	if cfg.WorktreesDir != filepath.Clean(abs) {
-		t.Fatalf("got %q, want %q", cfg.WorktreesDir, abs)
+	if cfg.MaxSlots != 1 {
+		t.Fatalf("got max_slots %d, want 1", cfg.MaxSlots)
 	}
 }
 
@@ -78,7 +72,7 @@ func TestLoadExisting_GIVEN_configOverridePath_WHEN_loaded_THEN_usesThatFileInst
 	root := t.TempDir()
 	overrideDir := t.TempDir()
 	overridePath := filepath.Join(overrideDir, "custom-config.yaml")
-	if err := os.WriteFile(overridePath, []byte("version: 1\nworktrees_dir: /tmp/wt\nbase_branch: main\nmax_slots: 3\n"), 0o644); err != nil {
+	if err := os.WriteFile(overridePath, []byte("version: 1\nbase_branch: main\nmax_slots: 3\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -189,7 +183,6 @@ func TestLoadExisting_GIVEN_filesIDEConfigured_WHEN_loaded_THEN_parsedSeparately
 	root := t.TempDir()
 	writeConfig(t, root, `
 version: 1
-worktrees_dir: ../{repo}-worktrees
 base_branch: main
 max_slots: 1
 files:

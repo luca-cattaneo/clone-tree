@@ -92,7 +92,6 @@ func TestPortsCmd_GIVEN_fixtureRepoWithPortsAndRegisteredWorktree_WHEN_runWithou
 	ln.Close()
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +

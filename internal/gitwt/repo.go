@@ -31,12 +31,10 @@ func RepoName(dir string) (string, error) {
 	return filepath.Base(root), nil
 }
 
-func WorktreesDir(dir string) (string, error) {
-	root, err := RepoRoot(dir)
-	if err != nil {
-		return "", err
-	}
-	name := filepath.Base(root)
-	parent := filepath.Dir(root)
-	return filepath.Join(parent, name+"-worktrees"), nil
+func WorktreePath(root, name string) string {
+	return filepath.Join(filepath.Dir(root), filepath.Base(root)+"-"+name)
+}
+
+func WorktreeName(root, path string) string {
+	return strings.TrimPrefix(filepath.Base(path), filepath.Base(root)+"-")
 }

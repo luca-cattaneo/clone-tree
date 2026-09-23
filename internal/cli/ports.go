@@ -33,7 +33,7 @@ var portsCmd = &cobra.Command{
 			return err
 		}
 
-		reg, err := slots.Load(cfg.WorktreesDir)
+		reg, err := slots.Load(root)
 		if err != nil {
 			return err
 		}

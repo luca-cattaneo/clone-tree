@@ -28,14 +28,11 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		cfg, err := config.LoadExisting(root, configPath)
-		if errors.Is(err, config.ErrNoConfig) {
-			cfg = &config.Config{RepoRoot: root}
-		} else if err != nil {
+		if _, err := config.LoadExisting(root, configPath); err != nil && !errors.Is(err, config.ErrNoConfig) {
 			return err
 		}
 
-		reg, err := slots.Load(cfg.WorktreesDir)
+		reg, err := slots.Load(root)
 		if err != nil {
 			return err
 		}
@@ -45,21 +42,21 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
-		headers, rows := augmentListRows(filepath.Base(root), listRows(worktrees, reg.Slots()))
+		headers, rows := augmentListRows(root, listRows(root, worktrees, reg.Slots()))
 		renderTable(os.Stdout, stdoutIsTTY(), headers, rows)
 		return nil
 	},
 }
 
-func augmentListRows(repo string, rows [][]string) ([]string, [][]string) {
+func augmentListRows(root string, rows [][]string) ([]string, [][]string) {
 	headers := []string{"Slot", "Name", "Branch", "Path", "Containers"}
+	repo := filepath.Base(root)
 
 	out := make([][]string, len(rows))
 	for i, row := range rows {
-		name := filepath.Base(row[3])
 		project := repo
 		if row[0] != "0" {
-			project = composeProjectName(repo, name)
+			project = composeProjectName(repo, gitwt.WorktreeName(root, row[3]))
 		}
 
 		augmented := append([]string{}, row...)
@@ -73,7 +70,7 @@ func augmentListRows(repo string, rows [][]string) ([]string, [][]string) {
 // worktrees with a registered slot sorted by slot ascending, then
 // worktrees present in git but missing from the registry (slot "-")
 // sorted alphabetically by name.
-func listRows(worktrees []gitwt.Worktree, slotByName map[string]int) [][]string {
+func listRows(root string, worktrees []gitwt.Worktree, slotByName map[string]int) [][]string {
 	if len(worktrees) == 0 {
 		return nil
 	}
@@ -81,7 +78,7 @@ func listRows(worktrees []gitwt.Worktree, slotByName map[string]int) [][]string 
 	rest := worktrees[1:]
 	var withSlot, withoutSlot []gitwt.Worktree
 	for _, wt := range rest {
-		if _, ok := slotByName[filepath.Base(wt.Path)]; ok {
+		if _, ok := slotByName[gitwt.WorktreeName(root, wt.Path)]; ok {
 			withSlot = append(withSlot, wt)
 		} else {
 			withoutSlot = append(withoutSlot, wt)
@@ -89,25 +86,25 @@ func listRows(worktrees []gitwt.Worktree, slotByName map[string]int) [][]string 
 	}
 
 	sort.Slice(withSlot, func(i, j int) bool {
-		return slotByName[filepath.Base(withSlot[i].Path)] < slotByName[filepath.Base(withSlot[j].Path)]
+		return slotByName[gitwt.WorktreeName(root, withSlot[i].Path)] < slotByName[gitwt.WorktreeName(root, withSlot[j].Path)]
 	})
 	sort.Slice(withoutSlot, func(i, j int) bool {
-		return filepath.Base(withoutSlot[i].Path) < filepath.Base(withoutSlot[j].Path)
+		return gitwt.WorktreeName(root, withoutSlot[i].Path) < gitwt.WorktreeName(root, withoutSlot[j].Path)
 	})
 
 	rows := make([][]string, 0, len(worktrees))
-	rows = append(rows, worktreeRow(worktrees[0], true, "0"))
+	rows = append(rows, worktreeRow(root, worktrees[0], true, "0"))
 	for _, wt := range withSlot {
-		rows = append(rows, worktreeRow(wt, false, strconv.Itoa(slotByName[filepath.Base(wt.Path)])))
+		rows = append(rows, worktreeRow(root, wt, false, strconv.Itoa(slotByName[gitwt.WorktreeName(root, wt.Path)])))
 	}
 	for _, wt := range withoutSlot {
-		rows = append(rows, worktreeRow(wt, false, "-"))
+		rows = append(rows, worktreeRow(root, wt, false, "-"))
 	}
 	return rows
 }
 
-func worktreeRow(wt gitwt.Worktree, isMain bool, slot string) []string {
-	name := filepath.Base(wt.Path)
+func worktreeRow(root string, wt gitwt.Worktree, isMain bool, slot string) []string {
+	name := gitwt.WorktreeName(root, wt.Path)
 	if isMain {
 		name += " (main)"
 	}

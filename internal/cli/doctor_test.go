@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/luca-cattaneo/clone-tree/internal/gitwt"
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
 
@@ -36,7 +37,6 @@ func runDoctorCmd(t *testing.T) (string, error) {
 func writeMinimalConfig(t *testing.T, repoDir, extra string) {
 	t.Helper()
 	yaml := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
@@ -94,14 +94,13 @@ func TestDoctorCmd_GIVEN_healthyRegisteredWorktree_WHEN_run_THEN_allChecksPass(t
 }
 
 func TestDoctorCmd_GIVEN_orphanRegisteredSlot_WHEN_run_THEN_orphanSlotFails(t *testing.T) {
-	projectsDir, repoDir := newCreateFixtureRepo(t)
+	_, repoDir := newCreateFixtureRepo(t)
 	writeMinimalConfig(t, repoDir, "")
 
 	chdir(t, repoDir)
 	configPath = ""
 
-	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
-	reg, err := slots.Load(worktreesDir)
+	reg, err := slots.Load(repoDir)
 	if err != nil {
 		t.Fatalf("slots.Load: %v", err)
 	}
@@ -116,6 +115,25 @@ func TestDoctorCmd_GIVEN_orphanRegisteredSlot_WHEN_run_THEN_orphanSlotFails(t *t
 	}
 	if !strings.Contains(out, "orphan slot 1 (stale) — run ct remove stale") {
 		t.Fatalf("expected orphan slot line, got:\n%s", out)
+	}
+}
+
+func TestDoctorCmd_GIVEN_unregisteredCtNamedWorktree_WHEN_run_THEN_warnsUnregisteredWorktree(t *testing.T) {
+	projectsDir, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	rogue := filepath.Join(projectsDir, "repo-rogue")
+	if err := gitwt.Create(repoDir, rogue, "rogue", "main"); err != nil {
+		t.Fatalf("gitwt.Create: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+
+	out, _ := runDoctorCmd(t)
+
+	if !strings.Contains(out, "⚠ unregistered worktree "+rogue) {
+		t.Fatalf("expected unregistered worktree line for %s, got:\n%s", rogue, out)
 	}
 }
 
@@ -135,7 +153,6 @@ func dbPortFixture(t *testing.T) (repoDir string, slot1Port int) {
 	}
 
 	yaml := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
@@ -297,7 +314,6 @@ func TestDoctorCmd_GIVEN_dockerUnavailable_WHEN_run_THEN_orphanStacksWarnsNotFai
 func TestDoctorCmd_GIVEN_missingPostCreateHook_WHEN_run_THEN_hookCheckFails(t *testing.T) {
 	_, repoDir := newCreateFixtureRepo(t)
 	yaml := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +

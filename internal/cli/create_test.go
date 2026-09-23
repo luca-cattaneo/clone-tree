@@ -83,8 +83,7 @@ func TestCreate_GIVEN_noConfigInRepo_WHEN_created_THEN_scaffoldsAndStopsWithoutP
 		t.Fatalf("expected scaffold to write config.yaml: %v", statErr)
 	}
 
-	worktreesDir := filepath.Join(filepath.Dir(repoDir), "repo-worktrees")
-	if _, statErr := os.Stat(filepath.Join(worktreesDir, "feature")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(filepath.Dir(repoDir), "repo-feature")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no worktree to be provisioned when scaffolding stops the command, stat err: %v", statErr)
 	}
 }
@@ -100,22 +99,9 @@ func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollb
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
-	// Stripped of write permission below, to force the symlink creation
-	// itself to fail (EACCES) after clone_cow has already succeeded.
-	blockedDir := filepath.Join(worktreesDir, "blocked")
-	if err := os.MkdirAll(blockedDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll blockedDir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(projectsDir, "blocked", "sibling"), 0o755); err != nil {
-		t.Fatalf("MkdirAll sibling source: %v", err)
-	}
-	if err := os.Chmod(blockedDir, 0o555); err != nil {
-		t.Fatalf("Chmod blockedDir: %v", err)
-	}
+	writeHookScript(t, repoDir, filepath.Join(".clone-tree", "hooks", "post-create.sh"), "exit 1\n")
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
@@ -124,8 +110,8 @@ func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollb
 		"files:\n" +
 		"  clone_cow:\n" +
 		"    - {src: \"{projects_dir}/data\", dst: \"{projects_dir}/data_{name}\"}\n" +
-		"  symlink_siblings: [blocked/sibling]\n" +
-		"hooks: {}\n"
+		"hooks:\n" +
+		"  post_create: .clone-tree/hooks/post-create.sh\n"
 	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
 		t.Fatalf("MkdirAll .clone-tree: %v", err)
 	}
@@ -139,7 +125,7 @@ func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollb
 
 	err := createCmd.RunE(createCmd, []string{"feature"})
 	if err == nil {
-		t.Fatalf("expected create to fail when the sibling symlink cannot be written")
+		t.Fatalf("expected create to fail when the post_create hook exits non-zero")
 	}
 
 	cloneCoWDst := filepath.Join(projectsDir, "data_feature")
@@ -147,7 +133,7 @@ func TestCreate_GIVEN_cloneCowSucceedsThenLaterStepFails_WHEN_created_THEN_rollb
 		t.Fatalf("expected rollback to remove %s, stat err: %v", cloneCoWDst, statErr)
 	}
 
-	if _, statErr := os.Stat(filepath.Join(worktreesDir, "feature")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(projectsDir, "repo-feature")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected the worktree itself to be rolled back too, stat err: %v", statErr)
 	}
 }
@@ -165,7 +151,6 @@ func TestCreate_GIVEN_candidateSlotPortAlreadyBusy_WHEN_created_THEN_errorsAndNo
 	// The candidate slot for a fresh repo is slot 1, so base+1*step must
 	// equal the busy listener's port.
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
@@ -189,12 +174,12 @@ func TestCreate_GIVEN_candidateSlotPortAlreadyBusy_WHEN_created_THEN_errorsAndNo
 		t.Fatalf("expected create to fail: the configured DB_PORT slot-1 value is the busy listener's port")
 	}
 
-	if _, statErr := os.Stat(filepath.Join(filepath.Dir(repoDir), "repo-worktrees", "feature")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(filepath.Dir(repoDir), "repo-feature")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected nothing to be touched (no worktree created), stat err: %v", statErr)
 	}
 }
 
-func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndSymlinkApplied(t *testing.T) {
+func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkAndCloneCowApplied(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 
 	if err := os.WriteFile(filepath.Join(repoDir, "conf.local"), []byte("local-conf"), 0o644); err != nil {
@@ -221,12 +206,8 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	if err := os.WriteFile(filepath.Join(dataSrc, "seed.txt"), []byte("seed"), 0o644); err != nil {
 		t.Fatalf("WriteFile seed.txt: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(projectsDir, "sibling"), 0o755); err != nil {
-		t.Fatalf("MkdirAll sibling source: %v", err)
-	}
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
@@ -238,7 +219,6 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 		"  hardlink: [vendor]\n" +
 		"  clone_cow:\n" +
 		"    - {src: \"{projects_dir}/data\", dst: \"{projects_dir}/data_{name}\"}\n" +
-		"  symlink_siblings: [sibling]\n" +
 		"hooks: {}\n"
 	if err := os.MkdirAll(filepath.Join(repoDir, ".clone-tree"), 0o755); err != nil {
 		t.Fatalf("MkdirAll .clone-tree: %v", err)
@@ -255,8 +235,7 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 		t.Fatalf("create: %v", err)
 	}
 
-	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
-	target := filepath.Join(worktreesDir, "feature")
+	target := filepath.Join(projectsDir, "repo-feature")
 
 	got, err := os.ReadFile(filepath.Join(target, "conf.local"))
 	if err != nil || string(got) != "local-conf" {
@@ -284,14 +263,6 @@ func TestCreate_GIVEN_filesConfigured_WHEN_created_THEN_copyHardlinkCloneCowAndS
 	if err != nil || string(got) != "seed" {
 		t.Fatalf("clone_cow: got %q, err %v", got, err)
 	}
-
-	link, err := os.Readlink(filepath.Join(worktreesDir, "sibling"))
-	if err != nil {
-		t.Fatalf("Readlink: %v", err)
-	}
-	if want := "../sibling"; link != want {
-		t.Fatalf("symlink_siblings: got %q, want %q", link, want)
-	}
 }
 
 func gitRevParse(t *testing.T, dir, ref string) string {
@@ -318,7 +289,6 @@ func TestCreate_GIVEN_noBaseBranchInConfig_WHEN_created_THEN_newBranchTipMatches
 	runGit(t, repoDir, "commit", "-m", "extra commit on wip")
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
 		"ports: {}\n" +
@@ -340,9 +310,8 @@ func TestCreate_GIVEN_noBaseBranchInConfig_WHEN_created_THEN_newBranchTipMatches
 		t.Fatalf("create: %v", err)
 	}
 
-	worktreesDir := filepath.Join(projectsDir, "repo-worktrees")
 	mainTip := gitRevParse(t, repoDir, "main")
-	newTip := gitRevParse(t, filepath.Join(worktreesDir, "x"), "HEAD")
+	newTip := gitRevParse(t, filepath.Join(projectsDir, "repo-x"), "HEAD")
 	if newTip != mainTip {
 		t.Fatalf("got new branch tip %q, want it to match main tip %q", newTip, mainTip)
 	}
@@ -368,7 +337,6 @@ func TestCreate_GIVEN_postCreateHook_WHEN_created_THEN_hookRunsWithInstanceEnv(t
 		fmt.Sprintf(`env | sort > %q`, markerFile)+"\n")
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"\"\n" +
 		"max_slots: 9\n" +
@@ -407,7 +375,7 @@ func TestCreate_GIVEN_postCreateHook_WHEN_created_THEN_hookRunsWithInstanceEnv(t
 func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResidue(t *testing.T) {
 	projectsDir, repoDir := newCreateFixtureRepo(t)
 
-	target := filepath.Join(projectsDir, "repo-worktrees", "feature")
+	target := filepath.Join(projectsDir, "repo-"+"feature")
 	wantProject := composeProjectName("repo", "feature")
 
 	// True only if "down" was called while target still existed: compose
@@ -435,7 +403,6 @@ func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResi
 	t.Cleanup(func() { hostsPath = origHostsPath })
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +
@@ -460,11 +427,11 @@ func TestCreate_GIVEN_postCreateHookFails_WHEN_created_THEN_rollbackLeavesNoResi
 		t.Fatalf("expected create to fail: post_create hook exits non-zero")
 	}
 
-	if _, statErr := os.Stat(filepath.Join(projectsDir, "repo-worktrees", "feature")); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(filepath.Join(projectsDir, "repo-"+"feature")); !os.IsNotExist(statErr) {
 		t.Fatalf("expected the worktree to be rolled back, stat err: %v", statErr)
 	}
 
-	reg, loadErr := slots.Load(filepath.Join(projectsDir, "repo-worktrees"))
+	reg, loadErr := slots.Load(repoDir)
 	if loadErr != nil {
 		t.Fatalf("slots.Load: %v", loadErr)
 	}

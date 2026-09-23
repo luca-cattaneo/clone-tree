@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/luca-cattaneo/clone-tree/internal/config"
+	"github.com/luca-cattaneo/clone-tree/internal/gitwt"
 	"github.com/luca-cattaneo/clone-tree/internal/hosts"
 	"github.com/luca-cattaneo/clone-tree/internal/slots"
 )
@@ -150,7 +151,7 @@ func TestRemove_GIVEN_worktreeDirManuallyDeleted_WHEN_removed_THEN_cleansSlotAnd
 
 	// Deleted by hand (rm -rf) rather than via `ct remove`, leaving stale
 	// slot-registry and git-worktree-metadata entries behind.
-	target := filepath.Join(projectsDir, "repo-worktrees", "feature")
+	target := filepath.Join(projectsDir, "repo-feature")
 	if err := os.RemoveAll(target); err != nil {
 		t.Fatalf("simulate manual deletion: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestRemove_GIVEN_worktreeDirManuallyDeleted_WHEN_removed_THEN_cleansSlotAnd
 		t.Fatalf("remove on half-deleted worktree: %v", err)
 	}
 
-	reg, err := slots.Load(filepath.Join(projectsDir, "repo-worktrees"))
+	reg, err := slots.Load(repoDir)
 	if err != nil {
 		t.Fatalf("slots.Load: %v", err)
 	}
@@ -169,6 +170,44 @@ func TestRemove_GIVEN_worktreeDirManuallyDeleted_WHEN_removed_THEN_cleansSlotAnd
 	}
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 		t.Fatalf("expected worktree dir to remain absent, stat err: %v", statErr)
+	}
+}
+
+func TestRemove_GIVEN_worktreeOutsideProjectsDir_WHEN_removed_THEN_refusedAndWorktreeKept(t *testing.T) {
+	_, repoDir := newCreateFixtureRepo(t)
+	writeMinimalConfig(t, repoDir, "")
+
+	elsewhere, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	stray := filepath.Join(elsewhere, "repo-feature")
+	if err := gitwt.Create(repoDir, stray, "feature", "main"); err != nil {
+		t.Fatalf("gitwt.Create: %v", err)
+	}
+
+	reg, err := slots.Load(repoDir)
+	if err != nil {
+		t.Fatalf("slots.Load: %v", err)
+	}
+	if _, err := reg.Allocate("feature", 9); err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+
+	chdir(t, repoDir)
+	configPath = ""
+	removeForce = true
+
+	err = removeCmd.RunE(removeCmd, []string{"feature"})
+
+	if err == nil {
+		t.Fatalf("expected remove to refuse a worktree ct would not have created")
+	}
+	if !strings.Contains(err.Error(), "refusing to remove") {
+		t.Fatalf("got err %v, want a refusing-to-remove error", err)
+	}
+	if _, statErr := os.Stat(stray); statErr != nil {
+		t.Fatalf("expected the stray worktree to be left untouched: %v", statErr)
 	}
 }
 
@@ -188,7 +227,6 @@ func TestRemove_GIVEN_preRemoveHookAndDNSPattern_WHEN_removed_THEN_hookRunsAndHo
 	t.Cleanup(func() { hostsPath = origHostsPath })
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +

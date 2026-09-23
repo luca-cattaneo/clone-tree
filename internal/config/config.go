@@ -21,11 +21,10 @@ type CloneCoW struct {
 }
 
 type Files struct {
-	IDE             []string   `yaml:"ide"`
-	Copy            []string   `yaml:"copy"`
-	Hardlink        []string   `yaml:"hardlink"`
-	CloneCoW        []CloneCoW `yaml:"clone_cow"`
-	SymlinkSiblings []string   `yaml:"symlink_siblings"`
+	IDE      []string   `yaml:"ide"`
+	Copy     []string   `yaml:"copy"`
+	Hardlink []string   `yaml:"hardlink"`
+	CloneCoW []CloneCoW `yaml:"clone_cow"`
 }
 
 type Hooks struct {
@@ -34,18 +33,17 @@ type Hooks struct {
 }
 
 type Config struct {
-	Version      int               `yaml:"version"`
-	WorktreesDir string            `yaml:"worktrees_dir"`
-	BaseBranch   string            `yaml:"base_branch"`
-	DNSPattern   string            `yaml:"dns_pattern"`
-	MaxSlots     int               `yaml:"max_slots"`
-	Ports        map[string]Port   `yaml:"ports"`
-	Env          map[string]string `yaml:"env"`
-	Files        Files             `yaml:"files"`
-	Hooks        Hooks             `yaml:"hooks"`
-	RepoRoot string `yaml:"-"`
+	Version    int               `yaml:"version"`
+	BaseBranch string            `yaml:"base_branch"`
+	DNSPattern string            `yaml:"dns_pattern"`
+	MaxSlots   int               `yaml:"max_slots"`
+	Ports      map[string]Port   `yaml:"ports"`
+	Env        map[string]string `yaml:"env"`
+	Files      Files             `yaml:"files"`
+	Hooks      Hooks             `yaml:"hooks"`
+	RepoRoot   string            `yaml:"-"`
 	// Maps a human label (e.g. "Web Client") to a URL template
-    Urls map[string]string `yaml:"urls"`
+	Urls map[string]string `yaml:"urls"`
 }
 
 const (
@@ -109,7 +107,6 @@ func LoadExisting(root, overridePath string) (*Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	cfg.resolveWorktreesDir()
 	return cfg, nil
 }
 
@@ -137,14 +134,6 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
-}
-
-func (c *Config) resolveWorktreesDir() {
-	expanded := Expand(c.WorktreesDir, BaseVars(c.RepoRoot))
-	if !filepath.IsAbs(expanded) {
-		expanded = filepath.Join(c.RepoRoot, expanded)
-	}
-	c.WorktreesDir = filepath.Clean(expanded)
 }
 
 func BaseVars(repoRoot string) map[string]string {

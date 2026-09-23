@@ -43,7 +43,7 @@ var createCmd = &cobra.Command{
 			return err
 		}
 
-		reg, err := slots.Load(cfg.WorktreesDir)
+		reg, err := slots.Load(root)
 		if err != nil {
 			return err
 		}
@@ -72,14 +72,10 @@ var createCmd = &cobra.Command{
 		}
 		rollback = append(rollback, func() { _ = reg.Free(name) })
 
-		target := filepath.Join(cfg.WorktreesDir, name)
+		target := gitwt.WorktreePath(root, name)
 		if _, statErr := os.Stat(target); statErr == nil {
 			err = fmt.Errorf("worktree already exists: %s", target)
 			return err
-		}
-
-		if err = os.MkdirAll(cfg.WorktreesDir, 0o755); err != nil {
-			return fmt.Errorf("create worktrees dir: %w", err)
 		}
 
 		branch := createBranch
@@ -130,11 +126,6 @@ var createCmd = &cobra.Command{
 				return err
 			}
 			rollback = append(rollback, func() { _ = os.RemoveAll(dst) })
-		}
-
-		// Sibling symlinks are shared across every worktree, not to be removed.
-		if err = fsops.SymlinkSiblings(cfg.Files.SymlinkSiblings, vars["projects_dir"], cfg.WorktreesDir); err != nil {
-			return err
 		}
 
 		if cfg.DNSPattern != "" {

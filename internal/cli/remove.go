@@ -40,7 +40,7 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
-		reg, err := slots.Load(cfg.WorktreesDir)
+		reg, err := slots.Load(root)
 		if err != nil {
 			return err
 		}
@@ -55,8 +55,8 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
-		if wt.Path == root {
-			return fmt.Errorf("%q is the main repository, not a worktree", name)
+		if want := gitwt.WorktreePath(root, name); wt.Path != want {
+			return fmt.Errorf("refusing to remove %s: ct would have created %q at %s", wt.Path, name, want)
 		}
 
 		// pre_remove runs before the compose stack (and everything else) is

@@ -141,7 +141,6 @@ func TestHostsCmd_GIVEN_configuredUrls_WHEN_runWithName_THEN_serviceUrlTableRend
 	t.Cleanup(func() { hostsPath = origHostsPath })
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +
@@ -218,7 +217,6 @@ func TestHostsCmd_GIVEN_fixtureRepoWithRegisteredWorktree_WHEN_run_THEN_noError(
 	t.Cleanup(func() { hostsPath = origHostsPath })
 
 	configYAML := "version: 1\n" +
-		"worktrees_dir: ../repo-worktrees\n" +
 		"base_branch: main\n" +
 		"dns_pattern: \"local-{name}.dev.test\"\n" +
 		"max_slots: 9\n" +

@@ -83,7 +83,7 @@ func runDoctor(root, overridePath string) []doctorGroup {
 		return groups
 	}
 
-	reg, err := slots.Load(cfg.WorktreesDir)
+	reg, err := slots.Load(root)
 	if err != nil {
 		return append(groups, doctorGroup{
 			title: "busy ports",
@@ -93,7 +93,7 @@ func runDoctor(root, overridePath string) []doctorGroup {
 
 	return append(groups,
 		checkBusyPorts(root, cfg, reg),
-		checkOrphanSlots(cfg, reg),
+		checkOrphanSlots(root, reg),
 		checkOrphanStacks(root, reg),
 		checkHooks(root, cfg),
 		checkDNS(cfg, reg),
@@ -136,11 +136,10 @@ func checkBusyPorts(root string, cfg *config.Config, reg *slots.Registry) doctor
 		return doctorGroup{title: "busy ports", lines: []doctorLine{{sevOK, "no ports configured"}}}
 	}
 
-	repo := filepath.Base(root)
 	var lines []doctorLine
 	for _, name := range sortedRegistryNames(reg) {
 		slot, _ := reg.Slot(name)
-		if line, ok := busyPortsLineForWorktree(cfg.WorktreesDir, repo, name, slot, cfg); ok {
+		if line, ok := busyPortsLineForWorktree(root, name, slot, cfg); ok {
 			lines = append(lines, line)
 		}
 	}
@@ -162,9 +161,9 @@ func checkBusyPorts(root string, cfg *config.Config, reg *slots.Registry) doctor
 // is a genuine external conflict (✗). When docker/compose can't answer at
 // all (!ok), a busy finding can't be told apart from the worktree's own
 // stack, so it's downgraded to a ⚠ instead of a ✗.
-func busyPortsLineForWorktree(worktreesDir, repo, name string, slot int, cfg *config.Config) (doctorLine, bool) {
-	dir := filepath.Join(worktreesDir, name)
-	project := composeProjectName(repo, name)
+func busyPortsLineForWorktree(root, name string, slot int, cfg *config.Config) (doctorLine, bool) {
+	dir := gitwt.WorktreePath(root, name)
+	project := composeProjectName(filepath.Base(root), name)
 
 	count, ok := composeRunningCount(dir, project)
 	if ok && count > 0 {
@@ -183,29 +182,27 @@ func busyPortsLineForWorktree(worktreesDir, repo, name string, slot int, cfg *co
 	return doctorLine{sev, fmt.Sprintf("%s (slot %d): busy ports: %s", name, slot, strings.Join(busy, ", "))}, true
 }
 
-// checkOrphanSlots never flags symlinked files.symlink_siblings entries:
-// os.ReadDir reports a symlink's own entry type, so IsDir() is false for
-// them regardless of what they point at.
-func checkOrphanSlots(cfg *config.Config, reg *slots.Registry) doctorGroup {
+func checkOrphanSlots(root string, reg *slots.Registry) doctorGroup {
 	registered := reg.Slots()
 
 	var lines []doctorLine
 	for _, name := range sortedRegistryNames(reg) {
-		if _, err := os.Stat(filepath.Join(cfg.WorktreesDir, name)); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(gitwt.WorktreePath(root, name)); errors.Is(err, os.ErrNotExist) {
 			lines = append(lines, doctorLine{sevFail, fmt.Sprintf("orphan slot %d (%s) — run ct remove %s", registered[name], name, name)})
 		}
 	}
 
-	entries, err := os.ReadDir(cfg.WorktreesDir)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		lines = append(lines, doctorLine{sevFail, fmt.Sprintf("read worktrees dir: %v", err)})
+	worktrees, err := gitwt.List(root)
+	if err != nil {
+		lines = append(lines, doctorLine{sevFail, fmt.Sprintf("list worktrees: %v", err)})
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
+	prefix := filepath.Base(root) + "-"
+	for _, wt := range worktrees {
+		if !strings.HasPrefix(filepath.Base(wt.Path), prefix) {
 			continue
 		}
-		if _, ok := registered[e.Name()]; !ok {
-			lines = append(lines, doctorLine{sevWarn, fmt.Sprintf("unregistered dir %s", e.Name())})
+		if _, ok := registered[gitwt.WorktreeName(root, wt.Path)]; !ok {
+			lines = append(lines, doctorLine{sevWarn, fmt.Sprintf("unregistered worktree %s", wt.Path)})
 		}
 	}
 

@@ -141,12 +141,11 @@ func runCompose(arg string, args ...string) error {
 		return fmt.Errorf("start/stop require a .clone-tree config")
 	}
 
-	cfg, err := config.LoadExisting(root, configPath)
-	if err != nil {
+	if _, err := config.LoadExisting(root, configPath); err != nil {
 		return err
 	}
 
-	reg, err := slots.Load(cfg.WorktreesDir)
+	reg, err := slots.Load(root)
 	if err != nil {
 		return err
 	}

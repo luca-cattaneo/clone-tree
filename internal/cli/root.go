@@ -35,12 +35,12 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
-func resolveWorktree(cwd, name string) (gitwt.Worktree, error) {
-	worktrees, err := gitwt.List(cwd)
+func resolveWorktree(root, name string) (gitwt.Worktree, error) {
+	worktrees, err := gitwt.List(root)
 	if err != nil {
 		return gitwt.Worktree{}, err
 	}
-	wt, ok := gitwt.FindByName(worktrees, name)
+	wt, ok := gitwt.FindByName(worktrees, filepath.Base(gitwt.WorktreePath(root, name)))
 	if !ok {
 		return gitwt.Worktree{}, fmt.Errorf("no worktree named %q", name)
 	}

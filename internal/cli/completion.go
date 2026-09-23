@@ -22,11 +22,10 @@ func completeWorktreeNames(_ *cobra.Command, args []string, _ string) ([]string,
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	cfg, err := config.LoadExisting(root, configPath)
-	if err != nil {
+	if _, err := config.LoadExisting(root, configPath); err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	reg, err := slots.Load(cfg.WorktreesDir)
+	reg, err := slots.Load(root)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
