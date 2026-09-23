@@ -1,14 +1,22 @@
 # ct — clone-tree
 
-Parallel git worktrees of one repo, each with its own ports via a generated `.env`.
+Docker-compose-based parallel git worktrees of one repo, each with its own ports via a generated `.env`.
+
+Each worktree gets its own compose project (`COMPOSE_PROJECT_NAME=<repo>-<name>`), isolated containers, networks and volumes, so stacks never collide with main or each other.
+
+## Requirements
+
+**Runner**
+- `git`
+- `docker compose`
+- Go 1.27+ (only to `go install` ct)
+
+**Project** (the repo you run `ct` in)
+- a git repo
+- is managed by a docker compose
 
 ## Install
 
-```sh
-go install github.com/luca-cattaneo/clone-tree/cmd/ct@latest   # needs Go, ~/go/bin on PATH
-```
-
-or clone the repo and then 
 ```sh
 go install ./cmd/ct
 export PATH="$HOME/go/bin:$PATH"
@@ -16,24 +24,17 @@ export PATH="$HOME/go/bin:$PATH"
 
 ## Commands
 
-| Command | Does |
-|---|---|
-| `ct create <name> [-b\|--branch b]` | slot → `git worktree add` → `.env` → `files:` → `hosts:` entry (if `dns_pattern` set) → `post_create` hook (see below). Any failure rolls everything back. Branch defaults to `<name>`; if missing locally it tracks `origin/<name>` when that exists (fetched first, offline = fallback), else created from `origin/<base_branch>` (fetched first; falls back to local `<base_branch>` offline). |
-| `ct create-config` | scaffold `.clone-tree/config.yaml` on its own, without creating a worktree. No config yet: generates it and prints the review notice (exit 0). Config already present: errors `config already exists: <path>` — never overwrites. |
-| `ct remove <name\|slot>` | `pre_remove` hook (if configured) → `docker compose down -v --remove-orphans` (best-effort if the worktree has no compose file, else propagated; `--remove-orphans` also kills one-off `docker compose run` containers) → removes worktree (guaranteed gone afterward — a leftover dir is force-deleted and `git worktree prune` clears stale metadata, even on a half-broken instance), its `clone_cow` dirs, its hosts entry, frees slot. `-f`/`--force` defaults to `true` (the generated `.env` blocks git's safe remove). Slot 0 = main repo, not removable. |
-| `ct list` | slot / name / branch / path / running container count. Main = slot 0. Unregistered worktree = `-`. |
-| `ct start <name\|slot>` / `ct stop <name\|slot>` | `docker compose up -d` / `down` in the worktree dir, `COMPOSE_PROJECT_NAME=<repo>-<name>`. Requires a `.clone-tree` config. |
-| `ct ports [name|slot]` | no arg: table of every registered worktree (+ main at slot 0) × every configured port var. With `name` or slot: `Var`/`Value` table for that worktree. |
-| `ct hosts [name|slot]` | table of every registered worktree: Slot, Name, DNS (expanded `dns_pattern`), and whether it's currently present in the hosts file (`✓` clone-tree-owned, `✓ (unmanaged)` present but not ct-managed, `-` absent). With `name`/slot and a non-empty `urls:`, also prints a Service/URL table underneath (see Config below). |
-| `ct doctor` | diagnoses the repo's setup: config validity, literal (non-`${VAR}`) compose port bindings, busy ports per registered worktree (plus main's base values), orphan slots (registered but the worktree dir is gone, or vice versa), orphan compose stacks (a `<repo>-<name>` project with no registered worktree behind it — leftover containers/volumes/network from a worktree removed by hand), configured hook paths, and `/etc/hosts` DNS entries. No config yet is a `⚠` (bare mode), not an error; docker being unavailable also downgrades the orphan-stacks check to a single `⚠`. Plain grouped `✓`/`✗`/`⚠` lines — not a table. Exits 1 if any check is `✗`. |
+- `ct create <name>` — create a new git worktree (rolls back on any failure)
+- `ct create-config` — scaffold `.clone-tree/config.yaml`
+- `ct remove <name|slot>` — tear down a worktree's compose stack and remove it
+- `ct list` — list git worktrees with slot, branch, path, and running container count
+- `ct start <name|slot>` — start a worktree's compose stack
+- `ct stop <name|slot>` — stop a worktree's compose stack
+- `ct ports [name|slot]` — show configured ports
+- `ct hosts [name|slot]` — show configured DNS entries
+- `ct doctor` — diagnose the repo's clone-tree setup (config, ports, orphan slots/stacks, hooks, DNS)
 
 Global flag: `-c`/`--config <path>` (skips lookup + scaffold).
-
-Only `ct create` and `ct create-config` ever auto-scaffold `.clone-tree/config.yaml`. Every other
-command reads an existing config only: `ct list` still works with no config at all (bare mode —
-plain worktree listing, no ports/urls columns); `ct ports`/`ct hosts`/`ct start`/`ct stop`/
-`ct remove` error cleanly instead ("no .clone-tree/config.yaml — run `ct create` to
-scaffold one").
 
 ## Shell completion
 
@@ -41,21 +42,42 @@ scaffold one").
 echo 'source <(ct completion zsh)' >> ~/.zshrc
 ```
 
-`remove`, `start`, `stop`, `ports`, and `hosts` complete their `<name|slot>` argument
-from the slot registry (silently no completions if there's no config yet, or any other error).
+`remove`, `start`, `stop`, `ports`, and `hosts` complete their `<name|slot>` argument from the slot registry.
 
-## Where things go
+## How it works
+
+Exemple:
+```text
+              main (slot 0)                    feature-x (slot 1)
+        ┌────────────────────────┐       ┌────────────────────────────┐
+        │ myrepo/                │       │ myrepo-feature-x/          │
+        │  compose.yaml          │       │  compose.yaml              │
+        │  .env  HTTP_PORT=8080  │       │  .env  HTTP_PORT=8081      │  ← ports shift per slot: base+slot*step
+        │  vendor/       ────────┼─hardlink─►  vendor/                │
+        │  conf/local.php ───────┼──copy────►  conf/local.php         │
+        └───────────┬────────────┘       └──────────────┬─────────────┘
+                     │                                    │
+         compose project "myrepo"          compose project "myrepo-feature-x"
+              container :8080                    container :8081       ← COMPOSE_PROJECT_NAME: own net/volumes
+
+  ../docker_data/db ──clone_cow (cp -Rc)──► ../docker_data/db_feature-x
+
+  /etc/hosts: 127.0.0.1 feature-x.myrepo.localhost  # dns_pattern → clone-tree:feature-x
+```
+
+## Files structure
 
 ```text
-<repo>/.clone-tree/config.yaml   # config, generated by `ct create` or `ct create-config` — review & commit
-../<repo>-worktrees/
-  .slots                         # name:slot registry
-  <sibling>/ -> ../<sibling>     # files.symlink_siblings (shared, never removed)
-  <name>/                        # the worktree
-    .env                         # main .env inherited (minus overridden keys) + a "ct (slot N)" block
-    …                            # + files.copy / files.hardlink
+<repo>/.clone-tree/config.yaml   # config, generated by `ct create` or `ct create-config`
+<repo>/.git/clone-tree/slots     # name:slot registry
+../<repo>-<name>/                # the worktree
+  .env                           # main .env inherited with overridden values
+  …                              # + files.copy / files.hardlink
 <clone_cow dst>                  # e.g. ../docker_data/db_<name>, deleted by remove
 ```
+
+The layout is flat: a worktree is created **directly beside the main repo**, so a relative `../X` reference written for the main repo (a compose bind mount,
+a `composer.json` path repository, an npm `file:../` dep) resolves to the same real target.
 
 ## Config — `.clone-tree/config.yaml`
 
@@ -66,7 +88,6 @@ does, and **why you would put something in it**.
 
 ```yaml
 version: 1
-worktrees_dir: ../myrepo-worktrees          # {repo} (= repo dir name) also works
 base_branch: main                           # autodetected at scaffold: main, then master, else prompts
 dns_pattern: ""                             # empty = everything on localhost
 max_slots: 9
@@ -81,7 +102,6 @@ files:
   copy:      [conf/local.php]
   hardlink:  [vendor/]
   clone_cow: [{src: "{projects_dir}/docker_data/db", dst: "{projects_dir}/docker_data/db_{name}"}]
-  symlink_siblings: [OtherRepo, docker_data]
 hooks:
   post_create: .clone-tree/hooks/post-create.sh
   pre_remove:  .clone-tree/hooks/pre-remove.sh
@@ -95,118 +115,29 @@ Templating: string values expand `{name}` `{name_lower}` `{slot}` `{dns}` `{repo
 | Key | What | Why / when to set it |
 |---|---|---|
 | `version` | schema version, `1` | future-proofing; never touch |
-| `worktrees_dir` | where worktrees live, relative to repo root | default `../{repo}-worktrees` keeps worktrees out of the repo (so the repo's own gitignore/tooling never sees them) but next to it. ⚠️ if you use `files.symlink_siblings`, it **must** sit directly inside the repo's parent dir — the links are literally `../<name>` |
 | `base_branch` | the branch a new worktree's branch is created from, when `-b`/`--branch`/`<name>` doesn't already exist locally or on `origin` | optional; when unset, `ct create` autodetects `main` then `master` and errors if neither exists. Scaffold writes the detected value; change it by hand if your default branch is neither |
 | `max_slots` | max concurrent worktrees (slots `1..N`; main = `0`) | bounds the port space: every `ports:` var reserves `base+step .. base+N*step`. Set it to what your machine can actually run in parallel — a bigger N just makes port collisions more likely |
-| `dns_pattern` | per-instance hostname template, e.g. `"{name}.myapp.localhost"` | **only** if the app pins its origin to a hostname — OAuth redirect URIs, cookie domain, vhost `server_name`. Empty (default) = everything on `localhost:<port>` and ct never touches `/etc/hosts`. Non-empty = ct manages one `/etc/hosts` line per instance (may prompt `sudo`) |
+| `dns_pattern` | per-instance hostname template, e.g. `"{name}.myapp.localhost"` | **only** if the app pins its origin to a hostname. Empty (default) = everything on `localhost:<port>` and ct never touches `/etc/hosts`. Non-empty = ct manages one `/etc/hosts` line per instance |
 | `ports` | `VAR: {base, step}` — slot N's `.env` gets `VAR=base+N*step` | one entry per **host** port your compose exposes as `${VAR}`. This is the core of ct: it's how two instances run the same stack without fighting over ports. A port compose binds literally (`8443:443`) can't be entered here — ct never rewrites compose YAML, so parameterize it as `${VAR:-8443}` first |
-| `env` | extra per-instance `.env` lines, templated | anything **besides ports** that must differ between instances: `COMPOSE_PROJECT_NAME`-adjacent names, `SERVER_NAME`, cache/queue prefixes. Litmus test: if the value would be identical in every worktree, it belongs in the repo's committed `.env`, not here |
+| `env` | extra per-instance `.env` lines, templated | anything **besides ports** that must differ between instances: `COMPOSE_PROJECT_NAME`-adjacent names, `SERVER_NAME`, cache/queue prefixes. |
 | `urls` | `label: URL-template`, rendered by `ct hosts <name>` | pure convenience — "where do I click for this instance". Zero behavior; skip it if you don't care |
-| `hooks` | `post_create` / `pre_remove` executables, repo-relative | the escape hatch for provisioning ct can't know about: patch the copied `.idea` to the new paths, seed a DB, register the instance in some tool. `post_create` failure rolls the whole create back; `pre_remove` failure aborts the remove untouched |
+| `hooks` | `post_create` / `pre_remove` executables, repo-relative | the escape hatch for provisioning ct can't know about: patch the copied `.idea` to the new paths, seed a DB, register the instance in some tool. |
 
-### `files:` — five buckets, one question
+### `files:` — four buckets, one question
 
 Everything under `files:` exists to materialize **gitignored** state into a fresh worktree —
 tracked files come along with `git worktree add` for free, so they never belong here. Pick the
 bucket by asking: *does each instance need its own copy, and how expensive is it?*
 
-| Bucket | Own copy? | Mechanism | Put here | Example |
-|---|---|---|---|---|
-| `copy` | ✅ independent | plain recursive copy | small mutable config each instance may edit | `conf/local.php`, `.env.local` |
-| `ide` | ✅ independent | same as `copy` | IDE dirs — separate key only because they usually need per-worktree patching afterwards (`post_create` hook rewrites paths) | `.idea/` |
-| `hardlink` | ⚠️ shared content, own tree | per-file hardlinks (cross-device → symlink) | big dirs the app **reads but doesn't edit in place** — near-zero disk cost. Editing a hardlinked file edits it in every instance | `vendor/`, `node_modules/` |
-| `clone_cow` | ✅ independent, cheap | `cp -Rc` (APFS) / `--reflink` (Linux), else full copy | big **mutable** data where each instance must diverge — CoW makes the copy instant and pay-per-change | a DB datadir seeded from main's |
-| `symlink_siblings` | ❌ shared, live | one symlink in `worktrees_dir` | see below — the odd one out | sibling repos, shared data dirs |
+| Bucket | Mechanism | Put here | Example |
+|---|---|---|---|
+| `copy` | plain recursive copy | small mutable config each instance may edit | `conf/local.php`, `.env.local` |
+| `ide` | same as `copy` | IDE dirs — separate key only because they usually need per-worktree patching afterwards (`post_create` hook rewrites paths) | `.idea/` |
+| `hardlink` | per-file hardlinks (cross-device → symlink) | big dirs the app **reads but doesn't edit in place** — near-zero disk cost. Editing a hardlinked file edits it in every instance | `vendor/`, `node_modules/` |
+| `clone_cow` | `cp -Rc` (APFS) / `--reflink` (Linux), else full copy | big **mutable** data where each instance must diverge — CoW makes the copy instant and pay-per-change | a DB datadir seeded from main's |
 
 Missing `copy`/`ide`/`hardlink` sources warn and skip; a `clone_cow` `dst` must not exist and
 is deleted by `ct remove`.
-
-### `files.symlink_siblings` — the odd one out
-
-Every other bucket provisions something **inside** the new worktree, once per instance. This
-one does neither: it creates **one shared symlink per name, in `worktrees_dir` itself**,
-`<worktrees_dir>/<name> → ../<name>`, the first time any `ct create` runs — and never removes
-it (not on `ct remove`, not on rollback: deleting it would break every other instance).
-
-**The problem it solves**: files in your repo were written assuming "I live in
-`Projects/<repo>`, my neighbor is at `../X`". A worktree lives one level deeper, in
-`Projects/<worktrees_dir>/<name>/`, so from there `../X` resolves to `<worktrees_dir>/X` —
-nothing. The symlink puts a fake neighbor there that bounces to the real one:
-
-```text
-Projects/
-├── myrepo/                    ../OtherRepo  ✅ resolves
-├── OtherRepo/
-└── myrepo-worktrees/
-    ├── OtherRepo -> ../OtherRepo    ← the symlink saves it
-    └── feature-x/             ../OtherRepo  ✅ resolves via the link
-```
-
-**How to build the list** — grep the repo for relative escapes and list every real sibling
-dir they point at:
-
-```sh
-grep -rn '\.\./' docker-compose* compose* composer.json package.json Makefile .env* 2>/dev/null
-```
-
-Typical sources of `../X` references: compose volume mounts / build contexts
-(`- ../OtherRepo:/srv/other`), `composer.json` path repositories, npm `file:../` deps,
-Makefiles building a sibling, `.env` values holding relative paths, a shared writable data
-dir all instances use.
-
-**What it is NOT**:
-- ❌ not a per-instance copy — the target is **shared live state**; an instance writing
-  through the link writes for everyone (want isolation → `clone_cow`)
-- ❌ not detection — ct never reads your compose files to find siblings; it links exactly
-  what you list, silently skipping names missing on disk, and never validates that compose's
-  `../X` references are all covered
-- ❌ not for absolute paths — those already resolve from anywhere
-
-If nothing in the repo references siblings relatively, leave it empty.
-
-### How the scaffold generates it
-
-When the config is missing, `ct create`/`ct create-config` write a draft, print a review
-checklist and **exit without running the command**.
-Discovers the compose file list from `<repo>/.env`'s `COMPOSE_FILE` (`:`-separated), else
-the first of `compose.yaml|compose.yml|docker-compose.yml|docker-compose.yaml` found plus
-its matching `.override.*`. Ports come from `docker compose config --no-interpolate`
-(merges `!override`/COMPOSE_FILE like a real `up` would); if docker is unavailable, ct
-falls back to its own yaml.v3 merge of the same files.
-
-Each `[ip:]host:container[/proto]` binding resolves to one `ports:` entry:
-
-| Binding | name | base |
-|---|---|---|
-| `${VAR:-d}` / `${VAR-d}` | `VAR` | `.env[VAR]` ?? `d` |
-| `${VAR}` (no default) | `VAR` | `.env[VAR]`; missing → `null` + a `# set me` comment |
-
-A literal binding (e.g. `8443:443`, no `${VAR}`) gets **no** `ports:` entry and **no**
-`.env` var — ct never rewrites compose YAML, so it can't be made slot-aware. Instead it
-surfaces as a comment only, one per service, grouping every literal port on that service:
-`# service <svc> cannot be replicated: non-parameterized host port 8443, 8444`.
-
-Then base/step: `step` is `10` for every var, `base` is the original port (or `+10000` when
-it's < 1024, a well-known port a proxy maps in from), and a collision pass multiplies a
-var's step ×10 (up to 3 times, else a `# collision` comment) whenever its slots 1..max_slots
-hit another var's base/slots **or a literal (non-parameterized) host port** — permanent
-obstacles since both main and every worktree bind them identically; literal ports are never
-bumped themselves, they're not entries.
-
-`files:` is always the live, empty `{}` — every suggestion (dep dirs → `# hardlink:`,
-`.idea`/`.vscode`/etc → their own `# ide:` bucket, everything else → `# copy:`) is a
-comment underneath for a human to uncomment into a real entry. Paths collapse to the
-topmost gitignored dir (`data/`, not `data/docker/x.bin`).
-
-`urls:` is likewise always the live, empty `{}` — one commented `label: "template"`
-suggestion per host-exposed `ports:` var (a literal, non-parameterized binding never gets
-one, same as it never gets a `ports:` entry): label is the owning compose service name
-(deduped `service`, `service-2`, … when one service exposes more than one port var), scheme
-is `https` when the container port is `443`/`8443` else `http`, host is `{dns}` when
-`dns_pattern` is non-empty else `localhost`.
-
-`ct create` probes every configured port for the candidate slot (bind + connect) before
-touching anything; a busy port aborts with nothing provisioned.
 
 ## Hooks
 
@@ -244,6 +175,4 @@ release, worktree removal (which also removes the generated `.env` and every `fi
 / `files.ide` / `files.hardlink` entry, since they live inside the worktree), each
 `files.clone_cow` destination, and the `/etc/hosts` entry. Any failure — including the
 `post_create` hook — unwinds that stack in reverse order, so a half-provisioned instance
-never survives a failed create. `files.symlink_siblings` is the one exception: it's shared
-across every worktree in `worktrees_dir`, so it's created idempotently but never undone —
-removing it on one worktree's rollback would break every other worktree's sibling mount.
+never survives a failed create.
